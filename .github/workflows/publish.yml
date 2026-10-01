@@ -1,0 +1,60 @@
+name: Publish
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - name: Use the lockfile npm version
+        run: npm install --global npm@11.19.0
+      - run: node scripts/verify-npm-version.mjs
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run scan:source
+      - run: npm run release:check
+      - run: npm run package:check
+      - run: npm run smoke:load
+      - run: npm run smoke:install
+      - name: Prepare npm authentication
+        run: node scripts/prepare-npm-auth.mjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish from the immutable tag
+        run: npm run release
+        env:
+          # Bootstrap only a genuinely new package, then remove the secret after enabling OIDC.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  verify-published:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Use the lockfile npm version
+        run: npm install --global npm@11.19.0
+      - run: npm ci
+      - name: Verify the published package
+        run: npm run scan:published

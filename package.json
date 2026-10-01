@@ -1,0 +1,75 @@
+{
+	"name": "n8n-nodes-community-template",
+	"version": "0.1.0",
+	"packageManager": "npm@11.19.0",
+	"private": true,
+	"description": "Reusable starter package for verified n8n community nodes",
+	"license": "MIT",
+	"homepage": "https://github.com/christopherjnelson/n8n-community-node-template#readme",
+	"keywords": [
+		"n8n-community-node-package"
+	],
+	"author": {
+		"name": "Christopher J. Nelson",
+		"email": "christopherjnelson@proton.me"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/christopherjnelson/n8n-community-node-template.git"
+	},
+	"scripts": {
+		"build": "n8n-node build",
+		"build:watch": "tsc --watch",
+		"dev": "n8n-node dev",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"lint": "n8n-node lint",
+		"lint:fix": "n8n-node lint --fix",
+		"typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+		"test": "vitest run",
+		"test:unit": "vitest run",
+		"scan:source": "node scripts/scan-source.mjs",
+		"scan:published": "node scripts/scan-published.mjs",
+		"smoke:load": "node scripts/node-load-smoke.mjs",
+		"smoke:install": "node scripts/package-install-smoke.mjs",
+		"release:check": "node scripts/release-check.mjs",
+		"package:check": "npm run release:check && npm pack --dry-run --json --cache .npm-cache | node scripts/validate-pack.mjs",
+		"release": "n8n-node release",
+		"prepublishOnly": "n8n-node prerelease"
+	},
+	"files": [
+		"dist"
+	],
+	"n8n": {
+		"n8nNodesApiVersion": 1,
+		"strict": true,
+		"credentials": [
+			"dist/credentials/GithubIssuesApi.credentials.js",
+			"dist/credentials/GithubIssuesOAuth2Api.credentials.js"
+		],
+		"nodes": [
+			"dist/nodes/GithubIssues/GithubIssues.node.js"
+		]
+	},
+	"devDependencies": {
+		"@n8n/node-cli": "0.46.4",
+		"@n8n/scan-community-package": "0.38.0",
+		"eslint": "9.39.4",
+		"prettier": "3.8.3",
+		"release-it": "20.2.0",
+		"typescript": "5.9.3",
+		"vitest": "4.1.11"
+	},
+	"allowScripts": {
+		"eslint-plugin-n8n-nodes-base": false
+	},
+	"peerDependencies": {
+		"n8n-workflow": "*"
+	},
+	"engines": {
+		"node": ">=22.22.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

@@ -1,0 +1,21 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"declaration": false,
+		"sourceMap": false,
+		"target": "es2020",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"allowJs": true,
+		"types": ["node", "vitest/globals"]
+	},
+	"include": [
+		"credentials/**/*",
+		"nodes/**/*",
+		"scripts/prepare-npm-auth.mjs",
+		"scripts/scan-policy.mjs",
+		"tests/**/*",
+		"vitest.config.mts"
+	]
+}
