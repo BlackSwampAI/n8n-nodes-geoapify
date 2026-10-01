@@ -10,6 +10,12 @@
 			},
 			{
 				"url": "https://apidocs.geoapify.com/docs/geocoding/reverse-geocoding/"
+			},
+			{
+				"url": "https://apidocs.geoapify.com/docs/places/"
+			},
+			{
+				"url": "https://apidocs.geoapify.com/docs/place-details/"
 			}
 		]
 	}

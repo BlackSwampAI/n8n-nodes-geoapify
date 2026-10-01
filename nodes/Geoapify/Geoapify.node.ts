@@ -13,9 +13,28 @@ import {
 	type INodeTypeDescription,
 	type IN8nHttpFullResponse,
 } from 'n8n-workflow';
+import { PLACE_CATEGORIES, PLACE_CATEGORY_SET } from './place-categories';
 
 const showForward = { resource: ['geocoding'], operation: ['forward'] };
 const showReverse = { resource: ['geocoding'], operation: ['reverse'] };
+const showSearch = { resource: ['places'], operation: ['search'] };
+const showDetails = { resource: ['placeDetails'], operation: ['get'] };
+const geometryTypes = new Set([
+	'Point',
+	'LineString',
+	'Polygon',
+	'MultiPoint',
+	'MultiLineString',
+	'MultiPolygon',
+	'GeometryCollection',
+]);
+
+function hasUnsafePlaceId(value: string): boolean {
+	return (
+		/[\s|,:/?#&]/.test(value) ||
+		[...value].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
+	);
+}
 
 function fail(this: IExecuteSingleFunctions, message: string): never {
 	throw new NodeOperationError(this.getNode(), message);
@@ -26,16 +45,38 @@ export async function validateGeoapifyRequest(
 	request: IHttpRequestOptions,
 ): Promise<IHttpRequestOptions> {
 	const resource = this.getNodeParameter('resource', 'geocoding');
-	if (resource !== 'geocoding')
-		throw new NodeOperationError(this.getNode(), 'Choose the Geocoding resource.');
+	if (!['geocoding', 'places', 'placeDetails'].includes(String(resource)))
+		throw new NodeOperationError(this.getNode(), 'Choose a supported Geoapify resource.');
 	const operation = this.getNodeParameter('operation', 'forward');
-	const outputFormat = this.getNodeParameter('options.outputFormat', 'features');
+	const outputFormat =
+		resource === 'places'
+			? this.getNodeParameter('searchOptions.outputFormat', 'features')
+			: resource === 'geocoding'
+				? this.getNodeParameter('options.outputFormat', 'features')
+				: 'features';
 	if (outputFormat !== 'features' && outputFormat !== 'raw')
 		throw new NodeOperationError(
 			this.getNode(),
 			'Choose One Item per Match or Raw FeatureCollection output.',
 		);
 	const qs = (request.qs ?? {}) as Record<string, unknown>;
+	if (resource === 'places') return validatePlacesRequest.call(this, request);
+	if (resource === 'placeDetails') {
+		if (operation !== 'get') fail.call(this, 'Choose Get Place Details.');
+		const id = this.getNodeParameter('placeId');
+		if (
+			typeof id !== 'string' ||
+			id.trim().length < 3 ||
+			id.trim().length > 2048 ||
+			hasUnsafePlaceId(id)
+		)
+			fail.call(this, 'Place ID must contain 3 to 2048 characters.');
+		qs.id = (id as string).trim();
+		request.qs = qs as IDataObject;
+		request.headers = { ...(request.headers ?? {}), Accept: 'application/json' };
+		request.timeout = 30000;
+		return request;
+	}
 	if (operation !== 'forward' && operation !== 'reverse') {
 		throw new NodeOperationError(this.getNode(), 'Choose Forward Geocoding or Reverse Geocoding.');
 	}
@@ -132,7 +173,111 @@ export async function validateGeoapifyRequest(
 	return request;
 }
 
-function isValidFeature(value: unknown): value is Record<string, unknown> {
+function intParam(
+	ctx: IExecuteSingleFunctions,
+	name: string,
+	fallback: number,
+	min: number,
+	max: number,
+): number {
+	const value = ctx.getNodeParameter(
+		name.startsWith('searchOptions.') ? name : `searchOptions.${name}`,
+		fallback,
+	);
+	if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max)
+		throw new NodeOperationError(
+			ctx.getNode(),
+			`${name} must be an integer from ${min} to ${max}.`,
+		);
+	return value;
+}
+
+function placesCoord(ctx: IExecuteSingleFunctions, name: string, min: number, max: number): number {
+	const value = ctx.getNodeParameter(name);
+	if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max)
+		throw new NodeOperationError(
+			ctx.getNode(),
+			`${name} must be a finite number from ${min} to ${max}.`,
+		);
+	return value;
+}
+
+function validatePlacesRequest(
+	this: IExecuteSingleFunctions,
+	request: IHttpRequestOptions,
+): IHttpRequestOptions {
+	if (this.getNodeParameter('operation') !== 'search') fail.call(this, 'Choose Search Places.');
+	const qs = (request.qs ?? {}) as Record<string, unknown>;
+	const mode = this.getNodeParameter('categoryMode', 'catalog');
+	if (mode !== 'catalog' && mode !== 'custom')
+		fail.call(this, 'Choose catalog or custom category entry.');
+	const raw: unknown =
+		mode === 'custom'
+			? this.getNodeParameter('customCategories')
+			: this.getNodeParameter('categories');
+	const categories = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : [];
+	const normalized = [...new Set(categories.map((v) => (typeof v === 'string' ? v.trim() : '')))];
+	if (
+		!normalized.length ||
+		normalized.some((v) => !PLACE_CATEGORY_SET.has(v)) ||
+		normalized.length > 100
+	)
+		fail.call(this, 'Select 1 to 100 valid Geoapify place categories.');
+	qs.categories = normalized.join(',');
+	const filterType = this.getNodeParameter('filterType', 'circle');
+	if (filterType === 'circle') {
+		const lat = placesCoord(this, 'filterLatitude', -90, 90),
+			lon = placesCoord(this, 'filterLongitude', -180, 180);
+		const radius = this.getNodeParameter('filterRadius');
+		if (typeof radius !== 'number' || !Number.isFinite(radius) || radius <= 0)
+			fail.call(this, 'Circle radius must be a positive finite number of meters.');
+		qs.filter = `circle:${lon},${lat},${radius}`;
+	} else if (filterType === 'rectangle') {
+		const south = placesCoord(this, 'southLatitude', -90, 90),
+			west = placesCoord(this, 'westLongitude', -180, 180);
+		const north = placesCoord(this, 'northLatitude', -90, 90),
+			east = placesCoord(this, 'eastLongitude', -180, 180);
+		if (south >= north || west >= east)
+			fail.call(
+				this,
+				'Rectangle requires south < north and west < east; dateline-spanning rectangles are not supported.',
+			);
+		qs.filter = `rect:${west},${south},${east},${north}`;
+	} else if (filterType === 'place') {
+		const id = this.getNodeParameter('filterPlaceId');
+		if (
+			typeof id !== 'string' ||
+			id.trim().length < 2 ||
+			id.trim().length > 2048 ||
+			hasUnsafePlaceId(id)
+		)
+			fail.call(this, 'Place boundary ID must be a single place identifier.');
+		qs.filter = `place:${(id as string).trim()}`;
+	} else if (filterType !== 'none') fail.call(this, 'Choose a supported spatial filter.');
+	const useBias = this.getNodeParameter('useProximityBias', false);
+	if (useBias === true) {
+		const lat = placesCoord(this, 'biasLatitude', -90, 90),
+			lon = placesCoord(this, 'biasLongitude', -180, 180);
+		qs.bias = `proximity:${lon},${lat}`;
+	} else if (useBias !== false) fail.call(this, 'Proximity bias toggle must be boolean.');
+	if (filterType === 'none' && !useBias)
+		fail.call(this, 'Choose a spatial filter or enable proximity bias.');
+	const pageSize = intParam(this, 'pageSize', 20, 1, 500);
+	intParam(this, 'maxResults', 20, 1, 5000);
+	intParam(this, 'maxRequests', 5, 1, 20);
+	const offset = intParam(this, 'startOffset', 0, 0, 1000000);
+	qs.limit = pageSize;
+	qs.offset = offset;
+	request.qs = qs as IDataObject;
+	request.headers = { ...(request.headers ?? {}), Accept: 'application/json' };
+	request.timeout = 30000;
+	return request;
+}
+
+function isValidFeature(
+	value: unknown,
+	allowAnyGeometry = false,
+): value is Record<string, unknown> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
 	const feature = value as Record<string, unknown>;
 	if (
@@ -146,6 +291,7 @@ function isValidFeature(value: unknown): value is Record<string, unknown> {
 	if (geometry === null) return true;
 	if (!geometry || typeof geometry !== 'object' || Array.isArray(geometry)) return false;
 	const g = geometry as Record<string, unknown>;
+	if (allowAnyGeometry) return isValidGeometry(g);
 	if (g.type !== 'Point' || !Array.isArray(g.coordinates) || g.coordinates.length < 2) return false;
 	return (
 		typeof g.coordinates[0] === 'number' &&
@@ -153,6 +299,82 @@ function isValidFeature(value: unknown): value is Record<string, unknown> {
 		typeof g.coordinates[1] === 'number' &&
 		Number.isFinite(g.coordinates[1])
 	);
+}
+
+function isPosition(value: unknown): value is number[] {
+	return (
+		Array.isArray(value) &&
+		value.length >= 2 &&
+		value.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))
+	);
+}
+
+function isValidGeometry(value: Record<string, unknown>): boolean {
+	const type = value.type;
+	if (type === 'GeometryCollection')
+		return (
+			Array.isArray(value.geometries) &&
+			value.geometries.every(
+				(geometry) =>
+					!!geometry &&
+					typeof geometry === 'object' &&
+					!Array.isArray(geometry) &&
+					isValidGeometry(geometry as Record<string, unknown>),
+			)
+		);
+	if (!geometryTypes.has(String(type)) || type === 'GeometryCollection') return false;
+	const coordinates = value.coordinates;
+	switch (type) {
+		case 'Point':
+			return isPosition(coordinates);
+		case 'MultiPoint':
+			return Array.isArray(coordinates) && coordinates.length > 0 && coordinates.every(isPosition);
+		case 'LineString':
+			return Array.isArray(coordinates) && coordinates.length >= 2 && coordinates.every(isPosition);
+		case 'MultiLineString':
+			return (
+				Array.isArray(coordinates) &&
+				coordinates.length > 0 &&
+				coordinates.every(
+					(line) => Array.isArray(line) && line.length >= 2 && line.every(isPosition),
+				)
+			);
+		case 'Polygon':
+			return (
+				Array.isArray(coordinates) &&
+				coordinates.length > 0 &&
+				coordinates.every(
+					(ring) => Array.isArray(ring) && ring.length >= 4 && ring.every(isPosition),
+				)
+			);
+		case 'MultiPolygon':
+			return (
+				Array.isArray(coordinates) &&
+				coordinates.length > 0 &&
+				coordinates.every(
+					(polygon) =>
+						Array.isArray(polygon) &&
+						polygon.length > 0 &&
+						polygon.every(
+							(ring) => Array.isArray(ring) && ring.length >= 4 && ring.every(isPosition),
+						),
+				)
+			);
+		default:
+			return false;
+	}
+}
+
+function canonicalJson(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+	if (value && typeof value === 'object') {
+		const record = value as Record<string, unknown>;
+		return `{${Object.keys(record)
+			.sort()
+			.map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+			.join(',')}}`;
+	}
+	return JSON.stringify(value);
 }
 
 function coordinate(
@@ -233,7 +455,7 @@ function safeError(thisArg: IExecuteSingleFunctions, error: unknown, secret: str
 	);
 	const localMessage = error instanceof NodeOperationError ? scrub(error.message, secret) : '';
 	const safeLocalMessage =
-		/^(Forward geocoding|Structured address|Latitude|Longitude|Result limit|Language|Result type|Country codes|Country filter|Choose |Geoapify returned )/.test(
+		/^(Forward geocoding|Structured address|Latitude|Longitude|Result limit|Language|Result type|Country codes|Country filter|Choose |Select |Circle |Rectangle |Place ID|Place boundary ID|Boundary Place ID|filterLatitude |filterLongitude |southLatitude |westLongitude |northLatitude |eastLongitude |biasLatitude |biasLongitude |Proximity bias toggle|pageSize |maxResults |maxRequests |startOffset |Geoapify returned )/.test(
 			localMessage,
 		);
 	const description =
@@ -319,7 +541,10 @@ export async function sanitizeGeoapifyResponse(
 		!body ||
 		body.type !== 'FeatureCollection' ||
 		!Array.isArray(body.features) ||
-		body.features.some((feature) => !isValidFeature(feature))
+		body.features.some(
+			(feature) =>
+				!isValidFeature(feature, this.getNodeParameter('resource', 'geocoding') !== 'geocoding'),
+		)
 	) {
 		throw new NodeOperationError(
 			this.getNode(),
@@ -327,7 +552,15 @@ export async function sanitizeGeoapifyResponse(
 		);
 	}
 	const pairedItem = { item: this.getItemIndex() };
-	if (this.getNodeParameter('options.outputFormat', 'features') === 'raw') {
+	if (
+		this.getNodeParameter('resource', 'geocoding') === 'placeDetails' ||
+		this.getNodeParameter(
+			this.getNodeParameter('resource', 'geocoding') === 'places'
+				? 'searchOptions.outputFormat'
+				: 'options.outputFormat',
+			'features',
+		) === 'raw'
+	) {
 		return [{ json: JSON.parse(JSON.stringify(body)) as IDataObject, pairedItem }];
 	}
 	return body.features.map((feature: unknown) => {
@@ -342,6 +575,7 @@ export async function sanitizeGeoapifyResponse(
 		return {
 			json: {
 				...(record.properties as Record<string, unknown>),
+				...(record.id === undefined ? {} : { id: record.id }),
 				geometry: record.geometry ?? null,
 			} as IDataObject,
 			pairedItem,
@@ -358,7 +592,89 @@ export async function oneRequest(
 			this,
 			requestOptions.options as IHttpRequestOptions,
 		);
-		return await this.makeRoutingRequest(requestOptions);
+		if (this.getNodeParameter('resource', 'geocoding') !== 'places')
+			return await this.makeRoutingRequest(requestOptions);
+		const opts = requestOptions.options as IHttpRequestOptions;
+		const qs = opts.qs as Record<string, unknown>;
+		const pageSize = Number(qs.limit),
+			maxResults = intParam(this, 'maxResults', 20, 1, 5000);
+		const maxRequests = intParam(this, 'maxRequests', 5, 1, 20);
+		const baseOffset = Number(qs.offset ?? 0);
+		const outputRaw = this.getNodeParameter('searchOptions.outputFormat', 'features') === 'raw';
+		const all: INodeExecutionData[] = [];
+		const seen = new Set<string>();
+		let rawCollection: Record<string, unknown> | undefined;
+		let requested = 0,
+			stopReason = 'maxRequests';
+		let nextOffset = baseOffset;
+		while (requested < maxRequests && all.length < maxResults) {
+			const requestLimit = Math.min(pageSize, maxResults - all.length);
+			if (nextOffset > 1000000) {
+				stopReason = 'offsetLimit';
+				break;
+			}
+			qs.offset = nextOffset;
+			qs.limit = requestLimit;
+			const page = await this.makeRoutingRequest(requestOptions);
+			requested++;
+			if (outputRaw && !rawCollection)
+				rawCollection = page[0]?.json as Record<string, unknown> | undefined;
+			const pageFeatures = outputRaw
+				? (((page[0]?.json as Record<string, unknown> | undefined)?.features as unknown[]) ?? [])
+				: page;
+			let added = 0;
+			for (const feature of pageFeatures) {
+				const json =
+					feature && typeof feature === 'object' && 'json' in feature
+						? (feature as INodeExecutionData).json
+						: (feature as Record<string, unknown>);
+				const id = outputRaw
+					? String(
+							(
+								(feature as Record<string, unknown>).properties as
+									| Record<string, unknown>
+									| undefined
+							)?.place_id ??
+								(feature as Record<string, unknown>).id ??
+								canonicalJson(feature),
+						)
+					: String(json.place_id ?? json.id ?? canonicalJson(json));
+				if (seen.has(id)) continue;
+				seen.add(id);
+				added++;
+				if (outputRaw)
+					all.push({ json: feature as IDataObject, pairedItem: { item: this.getItemIndex() } });
+				else all.push(feature as INodeExecutionData);
+				if (all.length >= maxResults) break;
+			}
+			if (all.length >= maxResults) {
+				stopReason = 'maxResults';
+				break;
+			}
+			if (pageFeatures.length < requestLimit || pageFeatures.length === 0) {
+				stopReason = 'shortPage';
+				break;
+			}
+			if (added === 0) {
+				stopReason = 'repeatedPage';
+				break;
+			}
+			nextOffset += requestLimit;
+		}
+		if (outputRaw) {
+			const features = all.map((item) => item.json);
+			return [
+				{
+					json: {
+						...(rawCollection ?? { type: 'FeatureCollection' }),
+						features,
+						_geoapifyPagination: { requests: requested, returned: features.length, stopReason },
+					} as IDataObject,
+					pairedItem: { item: this.getItemIndex() },
+				},
+			];
+		}
+		return all;
 	} catch (error) {
 		const credentials = await this.getCredentials('geoapifyApi');
 		const secret = typeof credentials.apiKey === 'string' ? credentials.apiKey : '';
@@ -372,7 +688,7 @@ export async function oneRequest(
 const route = {
 	request: {
 		method: 'GET' as const,
-		url: "={{$parameter.operation === 'forward' ? 'https://api.geoapify.com/v1/geocode/search' : 'https://api.geoapify.com/v1/geocode/reverse'}}",
+		url: "={{$parameter.resource === 'places' ? 'https://api.geoapify.com/v2/places' : $parameter.resource === 'placeDetails' ? 'https://api.geoapify.com/v2/place-details' : $parameter.operation === 'forward' ? 'https://api.geoapify.com/v1/geocode/search' : 'https://api.geoapify.com/v1/geocode/reverse'}}",
 		ignoreHttpStatusErrors: true,
 	},
 	send: { paginate: true },
@@ -386,7 +702,11 @@ const properties: INodeProperties[] = [
 		name: 'resource',
 		type: 'options',
 		noDataExpression: true,
-		options: [{ name: 'Geocoding', value: 'geocoding' }],
+		options: [
+			{ name: 'Geocoding', value: 'geocoding' },
+			{ name: 'Place', value: 'places' },
+			{ name: 'Place Detail', value: 'placeDetails' },
+		],
 		default: 'geocoding',
 	},
 	{
@@ -394,6 +714,7 @@ const properties: INodeProperties[] = [
 		name: 'operation',
 		type: 'options',
 		noDataExpression: true,
+		displayOptions: { show: { resource: ['geocoding'] } },
 		options: [
 			{
 				name: 'Forward Geocoding',
@@ -409,6 +730,240 @@ const properties: INodeProperties[] = [
 			},
 		],
 		default: 'forward',
+	},
+	{
+		displayName: 'Operation',
+		name: 'operation',
+		type: 'options',
+		noDataExpression: true,
+		displayOptions: { show: { resource: ['places'] } },
+		options: [
+			{
+				name: 'Search',
+				value: 'search',
+				action: 'Search for places in a spatial area',
+				routing: route,
+			},
+		],
+		default: 'search',
+	},
+	{
+		displayName: 'Operation',
+		name: 'operation',
+		type: 'options',
+		noDataExpression: true,
+		displayOptions: { show: { resource: ['placeDetails'] } },
+		options: [
+			{ name: 'Get', value: 'get', action: 'Get details for a place identifier', routing: route },
+		],
+		default: 'get',
+	},
+	{
+		displayName: 'Category Entry',
+		name: 'categoryMode',
+		type: 'options',
+		default: 'catalog',
+		displayOptions: { show: showSearch },
+		options: [
+			{ name: 'Search Catalog', value: 'catalog' },
+			{ name: 'Custom Values', value: 'custom' },
+		],
+	},
+	{
+		displayName: 'Categories',
+		name: 'categories',
+		type: 'multiOptions',
+		required: true,
+		default: ['commercial'],
+		options: PLACE_CATEGORIES.map((name) => ({ name, value: name })),
+		description:
+			'Geoapify category catalog from the pinned OpenAPI PlaceCategory enum. Categories are searchable; expressions may provide an array of category keys.',
+		displayOptions: { show: { ...showSearch, categoryMode: ['catalog'] } },
+	},
+	{
+		displayName: 'Categories',
+		name: 'customCategories',
+		type: 'string',
+		default: '',
+		required: true,
+		description:
+			'Comma-separated Geoapify category keys. Supports expressions; values are checked against the bundled catalog.',
+		displayOptions: { show: { ...showSearch, categoryMode: ['custom'] } },
+	},
+	{
+		displayName: 'Spatial Filter',
+		name: 'filterType',
+		type: 'options',
+		default: 'circle',
+		description:
+			'A spatial filter restricts matches. Choose None only when proximity bias is enabled.',
+		displayOptions: { show: showSearch },
+		options: [
+			{ name: 'Circle', value: 'circle' },
+			{ name: 'Rectangle', value: 'rectangle' },
+			{ name: 'Place Boundary', value: 'place' },
+			{ name: 'None', value: 'none' },
+		],
+	},
+	{
+		displayName: 'Filter Latitude',
+		name: 'filterLatitude',
+		type: 'number',
+		default: 0,
+		typeOptions: { minValue: -90, maxValue: 90, numberPrecision: 7 },
+		required: true,
+		displayOptions: { show: { ...showSearch, filterType: ['circle'] } },
+	},
+	{
+		displayName: 'Filter Longitude',
+		name: 'filterLongitude',
+		type: 'number',
+		default: 0,
+		typeOptions: { minValue: -180, maxValue: 180, numberPrecision: 7 },
+		required: true,
+		displayOptions: { show: { ...showSearch, filterType: ['circle'] } },
+	},
+	{
+		displayName: 'Radius (Meters)',
+		name: 'filterRadius',
+		type: 'number',
+		default: 1000,
+		typeOptions: { minValue: 0 },
+		required: true,
+		displayOptions: { show: { ...showSearch, filterType: ['circle'] } },
+	},
+	{
+		displayName: 'South Latitude',
+		name: 'southLatitude',
+		type: 'number',
+		default: 0,
+		typeOptions: { minValue: -90, maxValue: 90, numberPrecision: 7 },
+		required: true,
+		displayOptions: { show: { ...showSearch, filterType: ['rectangle'] } },
+	},
+	{
+		displayName: 'West Longitude',
+		name: 'westLongitude',
+		type: 'number',
+		default: 0,
+		typeOptions: { minValue: -180, maxValue: 180, numberPrecision: 7 },
+		required: true,
+		displayOptions: { show: { ...showSearch, filterType: ['rectangle'] } },
+	},
+	{
+		displayName: 'North Latitude',
+		name: 'northLatitude',
+		type: 'number',
+		default: 1,
+		typeOptions: { minValue: -90, maxValue: 90, numberPrecision: 7 },
+		required: true,
+		displayOptions: { show: { ...showSearch, filterType: ['rectangle'] } },
+	},
+	{
+		displayName: 'East Longitude',
+		name: 'eastLongitude',
+		type: 'number',
+		default: 1,
+		typeOptions: { minValue: -180, maxValue: 180, numberPrecision: 7 },
+		required: true,
+		displayOptions: { show: { ...showSearch, filterType: ['rectangle'] } },
+	},
+	{
+		displayName: 'Boundary Place ID',
+		name: 'filterPlaceId',
+		type: 'string',
+		default: '',
+		required: true,
+		displayOptions: { show: { ...showSearch, filterType: ['place'] } },
+	},
+	{
+		displayName: 'Use Proximity Bias',
+		name: 'useProximityBias',
+		type: 'boolean',
+		default: false,
+		description:
+			'Whether to rank places near these coordinates first. This does not restrict matching places.',
+		displayOptions: { show: showSearch },
+	},
+	{
+		displayName: 'Bias Latitude',
+		name: 'biasLatitude',
+		type: 'number',
+		default: 0,
+		typeOptions: { minValue: -90, maxValue: 90, numberPrecision: 7 },
+		required: true,
+		displayOptions: { show: { ...showSearch, useProximityBias: [true] } },
+	},
+	{
+		displayName: 'Bias Longitude',
+		name: 'biasLongitude',
+		type: 'number',
+		default: 0,
+		typeOptions: { minValue: -180, maxValue: 180, numberPrecision: 7 },
+		required: true,
+		displayOptions: { show: { ...showSearch, useProximityBias: [true] } },
+	},
+	{
+		displayName: 'Place ID',
+		name: 'placeId',
+		type: 'string',
+		default: '',
+		required: true,
+		description: 'Geoapify place identifier',
+		displayOptions: { show: showDetails },
+	},
+	{
+		displayName: 'Search Options',
+		name: 'searchOptions',
+		type: 'collection',
+		placeholder: 'Add Search Option',
+		default: {},
+		displayOptions: { show: showSearch },
+		options: [
+			{
+				displayName: 'Maximum Requests',
+				name: 'maxRequests',
+				type: 'number',
+				default: 5,
+				typeOptions: { minValue: 1, maxValue: 20 },
+				description: 'Stops after this many page requests; the returned result set may be partial',
+			},
+			{
+				displayName: 'Maximum Results',
+				name: 'maxResults',
+				type: 'number',
+				default: 20,
+				typeOptions: { minValue: 1, maxValue: 5000 },
+				description:
+					'Stops after at most this many unique matches. Together with Page Size and Maximum Requests this bounds retrieval.',
+			},
+			{
+				displayName: 'Output',
+				name: 'outputFormat',
+				type: 'options',
+				default: 'features',
+				options: [
+					{ name: 'One Item per Match', value: 'features' },
+					{ name: 'Raw FeatureCollection', value: 'raw' },
+				],
+			},
+			{
+				displayName: 'Page Size',
+				name: 'pageSize',
+				type: 'number',
+				default: 20,
+				typeOptions: { minValue: 1, maxValue: 500 },
+			},
+			{
+				displayName: 'Start Offset',
+				name: 'startOffset',
+				type: 'number',
+				default: 0,
+				typeOptions: { minValue: 0, maxValue: 1000000 },
+				description:
+					'Starting Geoapify offset. Subsequent offsets advance by each requested page size.',
+			},
+		],
 	},
 	{
 		displayName: 'Address Input',
@@ -507,6 +1062,7 @@ const properties: INodeProperties[] = [
 		type: 'collection',
 		placeholder: 'Add Option',
 		default: {},
+		displayOptions: { show: { resource: ['geocoding'] } },
 		options: [
 			{
 				displayName: 'Language',
@@ -577,7 +1133,8 @@ export class Geoapify implements INodeType {
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter.operation}}',
-		description: 'Geocode addresses and coordinates with Geoapify.',
+		description:
+			'Geocode locations, search categorized places, and retrieve place details with Geoapify.',
 		defaults: { name: 'Geoapify' },
 		usableAsTool: true,
 		inputs: [NodeConnectionTypes.Main],
