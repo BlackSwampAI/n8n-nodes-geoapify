@@ -1,6 +1,6 @@
 # Geoapify for n8n
 
-An independent n8n community node for forward and reverse geocoding with Geoapify.
+An independent n8n community node for Geoapify geocoding, Places search, and Place Details.
 
 > This is an independent Black Swamp AI community integration. It is not affiliated with, endorsed by, sponsored by, or maintained by Geoapify. Product names and marks belong to their respective owners and are used only to identify compatibility.
 
@@ -28,13 +28,17 @@ Create one **Geoapify API** credential and enter your Geoapify API key in its pa
 
 **Geocoding → Reverse Geocoding** accepts decimal latitude and longitude in separate fields. Latitude is -90 to 90 and longitude is -180 to 180; zero is valid. Geoapify's reverse endpoint receives these as separate `lat` and `lon` query parameters. **Options → Max Results** defaults to 5 for both operations when no value is supplied.
 
-Autocomplete, Places, Place Details, Routing, batch APIs, and other Geoapify endpoints are outside this release batch. The package registers only its Geocoding Forward and Reverse operations. Depending on the n8n editor version, the host may also append its own **Custom API Call** entry for credentials with generic authentication; that host-provided affordance is not a Geoapify operation implemented by this package. The [roadmap](docs/batch1-handoff.md#roadmap) records the planned follow-up batches.
+**Place → Search** (Geoapify Places API) searches categories around a circle, within a rectangle, or inside a place boundary. These are spatial restrictions. The spatial filter can be set to None only when optional proximity bias is enabled; proximity ranks results and does not restrict them by itself. Categories come from the package's source-backed searchable catalog; use the custom category field for expressions or comma-separated values, which are validated against that catalog. Under **Search Options**, page size is 1–500 (default 20), maximum results 1–5000 (default 20), maximum requests 1–20 (default 5), and starting offset 0–1,000,000 (default 0). Retrieval is always bounded; there is no Return All control and pagination does not promise exhaustive results.
+
+**Place Detail → Get** (Geoapify Place Details API) takes a documented Geoapify place identifier and returns the complete details FeatureCollection. It retains returned properties, identifiers, related features, and geometry, including non-Point geometry.
+
+Autocomplete, batch APIs, Routing, and other Geoapify endpoints are outside this batch. The package registers the geocoding operations, Places Search, and Place Details Get. Depending on the n8n editor version, the host may also append its own **Custom API Call** entry for credentials with generic authentication; that host-provided affordance is not a Geoapify operation implemented by this package. Routing remains Batch 3; release-readiness work remains Batch 4. See the [Batch 2 handoff](docs/batch2-handoff.md).
 
 ## Output
 
-By default, each Geoapify GeoJSON feature becomes one n8n item. The feature's `properties` are placed at the top level and its `geometry` is retained as a top-level property. This keeps the formatted address, structured address fields, place identifiers, latitude/longitude, and any returned rank or confidence fields accessible without discarding geometry. Confidence and match metadata are indicators supplied by the service; they do not guarantee postal deliverability.
+For **Geocoding** and **Places Search**, the default **Output Format** is one item per feature. The feature's `properties` are placed at the top level and its `geometry` is retained as a top-level property. This keeps address/place fields, identifiers, coordinates, and returned rank or confidence fields accessible. Confidence and match metadata do not guarantee postal deliverability. Place Details always returns one complete FeatureCollection per input, including every related feature and its geometry.
 
-By default, each match is a separate item; a successful no-match response produces zero items. Select **Options → Output → Raw FeatureCollection** to return one item containing the complete service response for each input, including `features: []` when there are no matches. Enable n8n's **Always Output Data** when using one-item-per-match mode if the workflow should continue with an empty item after a no-match response. Multiple matches are returned as separate items; the node does not choose a first match on the caller's behalf.
+For Geocoding select **Options → Output → Raw FeatureCollection**; for Places select **Search Options → Output → Raw FeatureCollection**. Geocoding returns the complete service FeatureCollection per input. Places returns a bounded aggregate: it keeps the first page's collection metadata, combines deduplicated features from retrieved pages, and adds `_geoapifyPagination` with request count, returned feature count, and stop reason. This aggregate is not a verbatim single service response. Empty per-feature search results produce zero items; raw outputs and Place Details return one collection item even when it has no features. Enable n8n's **Always Output Data** when using one-item-per-feature mode if the workflow should continue with an empty item after a no-match response. Multiple matches are returned; the node does not select a first match.
 
 ## Errors and limits
 
@@ -53,6 +57,8 @@ Invalid or blank required inputs are rejected before a request is sent. Requests
 - [Geoapify API documentation](https://apidocs.geoapify.com/docs/)
 - [Geoapify forward geocoding](https://apidocs.geoapify.com/docs/geocoding/forward-geocoding/)
 - [Geoapify reverse geocoding](https://apidocs.geoapify.com/docs/geocoding/reverse-geocoding/)
+- [Geoapify Places](https://apidocs.geoapify.com/docs/places/)
+- [Geoapify Place Details](https://apidocs.geoapify.com/docs/place-details/)
 - [Compatibility and testing notes](docs/testing.md)
 - [Changelog](CHANGELOG.md)
 - [Black Swamp AI package page](https://blackswampai.com/n8n-nodes/geoapify/)

@@ -9,6 +9,11 @@ Notable user-facing changes are recorded here. This package is not yet published
 - Return one item per GeoJSON match by default, preserve properties and geometry, offer the raw FeatureCollection output, and define zero-match behavior.
 - Adopt the product identity, documentation, testing, and branding records for `@blackswampai/n8n-nodes-geoapify`.
 
+## Unreleased — Batch 2: Places
+
+- Add category-based Places Search with circle, rectangle, and place-boundary filters, optional proximity ranking bias, source-backed category choices, and bounded pagination.
+- Add Place Details Get with complete FeatureCollection output that preserves identifiers, properties, related features, and supported geometry.
+
 ## Planned roadmap
 
-The roadmap is recorded in [the Batch 1 handoff](docs/batch1-handoff.md). Only Batch 1 is included in this change. Each later batch is intended to start from freshly updated `main` after the preceding PR is merged.
+The roadmap is recorded in [the Batch 1 handoff](docs/batch1-handoff.md). Batch 1 is merged; this change adds Batch 2. Each later batch is intended to start from freshly updated `main` after the preceding PR is merged.

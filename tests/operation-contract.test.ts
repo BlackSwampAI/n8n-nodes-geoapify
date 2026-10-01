@@ -80,6 +80,15 @@ describe('Geoapify credential and declarative routing contract', () => {
 		expect(
 			(operation?.options as INodePropertyOptions[] | undefined)?.map(({ value }) => value),
 		).toEqual(['forward', 'reverse']);
+		const allOperations = new Geoapify().description.properties.filter(
+			(property) => property.name === 'operation',
+		);
+		expect((allOperations[1].options as INodePropertyOptions[]).map(({ value }) => value)).toEqual([
+			'search',
+		]);
+		expect((allOperations[2].options as INodePropertyOptions[]).map(({ value }) => value)).toEqual([
+			'get',
+		]);
 		expect(
 			(operation?.options as INodePropertyOptions[] | undefined)?.every(
 				({ routing }) => routing?.send?.paginate === true,
