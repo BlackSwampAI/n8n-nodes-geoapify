@@ -23,6 +23,7 @@
 - Keep `n8n-workflow` host-provided and avoid runtime dependencies. Use package scripts for validation, including lint, strict typecheck, tests, build, and package checks.
 - Follow `RELEASING.md`; the user authorizes releases and performs final review/merge.
 - Before release, require builder verification, orchestrator diff review, a disposable packed-package load smoke, representative real-n8n/user smoke, official source-scanner preflight, and explicit user authorization. Report observed limitations without converting metadata inference into runtime claims.
+- Launch disposable local n8n through `npm run dev`, which explicitly uses port 5690. Open `http://localhost:5690` manually because the CLI browser shortcut targets 5678. Never attach to, stop, or restart an existing service on 5678. If 5690 is occupied, report it and launch an explicit alternative such as `N8N_PORT=5692 npm exec -- n8n-node dev --custom-user-folder /tmp/n8n-node-run`; do not fall back silently.
 - Use the API, testing, branding, and batch-handoff templates under `docs/`. Generated repositories must adopt later template migrations explicitly and update `.blackswamp/template.json` only after reviewing and validating the migration.
 
 ## Node implementation style

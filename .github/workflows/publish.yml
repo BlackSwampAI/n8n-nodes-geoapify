@@ -58,3 +58,21 @@ jobs:
       - run: npm ci
       - name: Verify the published package
         run: npm run scan:published
+
+  notify-discord:
+    needs: [publish, verify-published]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Notify Discord
+        continue-on-error: true
+        run: node scripts/notify-discord.mjs
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}

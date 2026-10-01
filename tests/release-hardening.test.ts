@@ -13,6 +13,22 @@ import {
 } from '../scripts/scan-policy.mjs';
 import { assertRegisteredCredentialsAreWired } from '../scripts/node-load-smoke.mjs';
 
+describe('optional Discord release notification', () => {
+	const workflow = readFileSync(
+		new URL('../.github/workflows/publish.yml', import.meta.url),
+		'utf8',
+	);
+
+	it('runs only after publication and verification with read-only permissions', () => {
+		const job = workflow.split(/\n {2}notify-discord:\s*\n/)[1] ?? '';
+		expect(job).toContain('needs: [publish, verify-published]');
+		expect(job).toContain('contents: read');
+		expect(job).toContain('secrets.DISCORD_WEBHOOK');
+		expect(job).toContain('continue-on-error: true');
+		expect(job).not.toMatch(/id-token:\s*write|NODE_AUTH_TOKEN|secrets\.NPM_TOKEN/);
+	});
+});
+
 const temporaryDirectories: string[] = [];
 afterEach(() => {
 	for (const directory of temporaryDirectories.splice(0))

@@ -2,6 +2,10 @@
 
 This file records Batch 1 historical checks, Batch 2 evidence, and Batch 3 verification status. A test, compiled registration load, n8n UI inspection, local request mock, and live Geoapify request are different evidence tiers; passing one does not prove another.
 
+## Disposable local n8n
+
+Run `npm run dev -- --custom-user-folder /tmp/n8n-node-run` to start local n8n with an isolated user folder on port 5690, then open `http://localhost:5690` manually. The launcher overrides inherited `N8N_PORT` values and forwards CLI arguments. The CLI's browser shortcut still opens port 5678; never attach to, stop, or restart an existing service there. If 5690 is occupied, report the conflict and explicitly use an alternate port, for example `N8N_PORT=5692 npm exec -- n8n-node dev --custom-user-folder /tmp/n8n-node-run`. Do not silently select another port. These instructions describe the launcher; any actual runtime smoke must record its own observed results.
+
 ## Contract and behavior cases
 
 The Vitest suite should exercise TypeScript node and credential contracts with real n8n parameter shapes. Required Batch 1 cases:

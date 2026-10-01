@@ -96,10 +96,10 @@ try {
 	const templateMarker = JSON.parse(read('.blackswamp/template.json'));
 	if (
 		templateMarker.schemaVersion !== 1 ||
-		templateMarker.templateVersion !== '2.1.1' ||
+		templateMarker.templateVersion !== '2.2.0' ||
 		templateMarker.sourceRepository !== TEMPLATE_ORIGIN
 	)
-		fail('.blackswamp/template.json must identify template baseline 2.1.1');
+		fail('.blackswamp/template.json must identify template baseline 2.2.0');
 } catch {
 	fail('.blackswamp/template.json must contain valid JSON');
 }
@@ -158,11 +158,26 @@ if (/id-token:\s*write/.test(verifyPublishedJob))
 	fail('verify-published must not receive id-token: write');
 if (!publishWorkflow.includes('secrets.NPM_TOKEN'))
 	fail('publish must retain bootstrap token support');
+const notifyDiscordJob = publishWorkflow.split(/\n {2}notify-discord:\s*\n/)[1] ?? '';
+if (
+	!notifyDiscordJob.includes('needs: [publish, verify-published]') ||
+	!notifyDiscordJob.includes('contents: read') ||
+	!notifyDiscordJob.includes('node scripts/notify-discord.mjs') ||
+	!notifyDiscordJob.includes('secrets.DISCORD_WEBHOOK') ||
+	!notifyDiscordJob.includes('continue-on-error: true') ||
+	/id-token:\s*write/.test(notifyDiscordJob) ||
+	/NODE_AUTH_TOKEN|secrets\.NPM_TOKEN/.test(notifyDiscordJob)
+)
+	fail('Discord notification must be optional, read-only, and depend on both release jobs');
+if (packageJson.scripts?.dev !== 'node scripts/dev.mjs')
+	fail('dev must launch the port-pinned wrapper');
 for (const path of [
 	'scripts/prepare-npm-auth.mjs',
 	'scripts/verify-npm-version.mjs',
 	'scripts/scan-source.mjs',
 	'scripts/scan-published.mjs',
+	'scripts/dev.mjs',
+	'scripts/notify-discord.mjs',
 	'scripts/node-load-smoke.mjs',
 	'scripts/package-install-smoke.mjs',
 ]) {
