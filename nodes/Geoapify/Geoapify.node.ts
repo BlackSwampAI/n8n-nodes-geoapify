@@ -19,6 +19,26 @@ const showForward = { resource: ['geocoding'], operation: ['forward'] };
 const showReverse = { resource: ['geocoding'], operation: ['reverse'] };
 const showSearch = { resource: ['places'], operation: ['search'] };
 const showDetails = { resource: ['placeDetails'], operation: ['get'] };
+const showRoute = { resource: ['routing'], operation: ['calculate'] };
+const ROUTING_MODES = [
+	'walk',
+	'hike',
+	'scooter',
+	'motorcycle',
+	'drive',
+	'light_truck',
+	'bicycle',
+	'mountain_bike',
+	'road_bike',
+	'bus',
+	'medium_truck',
+	'truck',
+	'truck_dangerous_goods',
+	'heavy_truck',
+	'long_truck',
+	'transit',
+	'approximated_transit',
+];
 const geometryTypes = new Set([
 	'Point',
 	'LineString',
@@ -45,21 +65,80 @@ export async function validateGeoapifyRequest(
 	request: IHttpRequestOptions,
 ): Promise<IHttpRequestOptions> {
 	const resource = this.getNodeParameter('resource', 'geocoding');
-	if (!['geocoding', 'places', 'placeDetails'].includes(String(resource)))
+	if (!['geocoding', 'places', 'placeDetails', 'routing'].includes(String(resource)))
 		throw new NodeOperationError(this.getNode(), 'Choose a supported Geoapify resource.');
 	const operation = this.getNodeParameter('operation', 'forward');
 	const outputFormat =
-		resource === 'places'
-			? this.getNodeParameter('searchOptions.outputFormat', 'features')
-			: resource === 'geocoding'
-				? this.getNodeParameter('options.outputFormat', 'features')
-				: 'features';
+		resource === 'routing'
+			? this.getNodeParameter('routeOptions.outputFormat', 'features')
+			: resource === 'places'
+				? this.getNodeParameter('searchOptions.outputFormat', 'features')
+				: resource === 'geocoding'
+					? this.getNodeParameter('options.outputFormat', 'features')
+					: 'features';
 	if (outputFormat !== 'features' && outputFormat !== 'raw')
 		throw new NodeOperationError(
 			this.getNode(),
 			'Choose One Item per Match or Raw FeatureCollection output.',
 		);
 	const qs = (request.qs ?? {}) as Record<string, unknown>;
+	if (resource === 'routing') {
+		if (operation !== 'calculate') fail.call(this, 'Choose Calculate Route.');
+		const waypointMode = this.getNodeParameter('waypointMode', 'fields');
+		let entries: unknown[] | undefined;
+		if (waypointMode === 'fields') {
+			const rawWaypoints = this.getNodeParameter('waypoints');
+			if (rawWaypoints && typeof rawWaypoints === 'object' && !Array.isArray(rawWaypoints)) {
+				if (Object.keys(rawWaypoints).some((key) => key !== 'waypoint'))
+					fail.call(this, 'Waypoints must contain only the ordered waypoint list.');
+				entries = (rawWaypoints as Record<string, unknown>).waypoint as unknown[] | undefined;
+			}
+		} else if (waypointMode === 'json') {
+			const rawWaypoints = this.getNodeParameter('waypointsJson', '[]');
+			if (Array.isArray(rawWaypoints)) entries = rawWaypoints;
+			else if (typeof rawWaypoints === 'string') {
+				try {
+					const parsed: unknown = JSON.parse(rawWaypoints);
+					if (Array.isArray(parsed)) entries = parsed;
+				} catch {
+					fail.call(this, 'Waypoints JSON must be valid JSON containing an ordered array.');
+				}
+			}
+		} else {
+			fail.call(this, 'Choose Waypoint Fields or Waypoints JSON.');
+		}
+		if (!Array.isArray(entries) || entries.length < 2 || entries.length > 1000)
+			fail.call(this, 'Provide between 2 and 1000 ordered route waypoints.');
+		const waypointEntries = entries as unknown[];
+		const encoded = waypointEntries.map((entry) => {
+			if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+				fail.call(this, 'Each waypoint must have Latitude and Longitude numbers.');
+			const point = entry as Record<string, unknown>;
+			if (
+				Object.keys(point).length !== 2 ||
+				Object.keys(point).some((key) => key !== 'latitude' && key !== 'longitude')
+			)
+				fail.call(this, 'Each waypoint must contain only Latitude and Longitude.');
+			const lat = point.latitude,
+				lon = point.longitude;
+			if (typeof lat !== 'number' || !Number.isFinite(lat) || lat < -90 || lat > 90)
+				fail.call(this, 'Waypoint Latitude must be a finite number from -90 to 90.');
+			if (typeof lon !== 'number' || !Number.isFinite(lon) || lon < -180 || lon > 180)
+				fail.call(this, 'Waypoint Longitude must be a finite number from -180 to 180.');
+			return `${decimal(lat as number)},${decimal(lon as number)}`;
+		});
+		const mode = this.getNodeParameter('mode', 'drive');
+		if (typeof mode !== 'string' || !ROUTING_MODES.includes(mode))
+			fail.call(this, 'Choose a documented Geoapify travel mode.');
+		qs.waypoints = encoded.join('|');
+		qs.mode = mode;
+		qs.units = 'metric';
+		qs.format = 'geojson';
+		request.qs = qs as IDataObject;
+		request.headers = { ...(request.headers ?? {}), Accept: 'application/geo+json' };
+		request.timeout = 30000;
+		return request;
+	}
 	if (resource === 'places') return validatePlacesRequest.call(this, request);
 	if (resource === 'placeDetails') {
 		if (operation !== 'get') fail.call(this, 'Choose Get Place Details.');
@@ -171,6 +250,22 @@ export async function validateGeoapifyRequest(
 	request.headers = { ...(request.headers ?? {}), Accept: 'application/json' };
 	request.timeout = 30000;
 	return request;
+}
+
+function decimal(value: number): string {
+	const text = String(value);
+	if (!/[eE]/.test(text)) return text;
+	const [coefficient, exponentText] = text.toLowerCase().split('e');
+	const exponent = Number(exponentText);
+	const sign = coefficient.startsWith('-') ? '-' : '';
+	const unsigned = sign ? coefficient.slice(1) : coefficient;
+	const [whole, fraction = ''] = unsigned.split('.');
+	const digits = whole + fraction;
+	const decimalPosition = whole.length + exponent;
+	if (decimalPosition <= 0) return `${sign}0.${'0'.repeat(-decimalPosition)}${digits}`;
+	if (decimalPosition >= digits.length)
+		return `${sign}${digits}${'0'.repeat(decimalPosition - digits.length)}`;
+	return `${sign}${digits.slice(0, decimalPosition)}.${digits.slice(decimalPosition)}`;
 }
 
 function intParam(
@@ -455,7 +550,7 @@ function safeError(thisArg: IExecuteSingleFunctions, error: unknown, secret: str
 	);
 	const localMessage = error instanceof NodeOperationError ? scrub(error.message, secret) : '';
 	const safeLocalMessage =
-		/^(Forward geocoding|Structured address|Latitude|Longitude|Result limit|Language|Result type|Country codes|Country filter|Choose |Select |Circle |Rectangle |Place ID|Place boundary ID|Boundary Place ID|filterLatitude |filterLongitude |southLatitude |westLongitude |northLatitude |eastLongitude |biasLatitude |biasLongitude |Proximity bias toggle|pageSize |maxResults |maxRequests |startOffset |Geoapify returned )/.test(
+		/^(Forward geocoding|Structured address|Latitude|Longitude|Result limit|Language|Result type|Country codes|Country filter|Choose |Select |Circle |Rectangle |Place ID|Place boundary ID|Boundary Place ID|filterLatitude |filterLongitude |southLatitude |westLongitude |northLatitude |eastLongitude |biasLatitude |biasLongitude |Proximity bias toggle|pageSize |maxResults |maxRequests |startOffset |Provide between |Each waypoint |Waypoint |Waypoints |Geoapify returned )/.test(
 			localMessage,
 		);
 	const description =
@@ -537,13 +632,16 @@ export async function sanitizeGeoapifyResponse(
 		);
 	}
 	const body = response.body as Record<string, unknown> | undefined;
+	const resource = this.getNodeParameter('resource', 'geocoding');
 	if (
 		!body ||
 		body.type !== 'FeatureCollection' ||
 		!Array.isArray(body.features) ||
+		(resource === 'routing' && !isValidRoutingCollectionProperties(body.properties)) ||
 		body.features.some(
 			(feature) =>
-				!isValidFeature(feature, this.getNodeParameter('resource', 'geocoding') !== 'geocoding'),
+				!isValidFeature(feature, resource !== 'geocoding') ||
+				(resource === 'routing' && !isValidRouteFeature(feature)),
 		)
 	) {
 		throw new NodeOperationError(
@@ -552,6 +650,17 @@ export async function sanitizeGeoapifyResponse(
 		);
 	}
 	const pairedItem = { item: this.getItemIndex() };
+	if (resource === 'routing') {
+		if (this.getNodeParameter('routeOptions.outputFormat', 'features') === 'raw')
+			return [{ json: JSON.parse(JSON.stringify(body)) as IDataObject, pairedItem }];
+		return body.features.map((feature: unknown) => ({
+			json: {
+				...(JSON.parse(JSON.stringify(feature)) as Record<string, unknown>),
+				_geoapifyUnits: { distance: 'meters', duration: 'seconds' },
+			} as IDataObject,
+			pairedItem,
+		}));
+	}
 	if (
 		this.getNodeParameter('resource', 'geocoding') === 'placeDetails' ||
 		this.getNodeParameter(
@@ -581,6 +690,72 @@ export async function sanitizeGeoapifyResponse(
 			pairedItem,
 		};
 	});
+}
+
+function isValidRouteFeature(value: unknown): boolean {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+	const feature = value as Record<string, unknown>;
+	if (feature.type !== 'Feature' || !feature.geometry || typeof feature.geometry !== 'object')
+		return false;
+	const geometry = feature.geometry as Record<string, unknown>;
+	if (
+		geometry.type !== 'MultiLineString' ||
+		!Array.isArray(geometry.coordinates) ||
+		!geometry.coordinates.every(
+			(line) => Array.isArray(line) && line.length >= 2 && line.every(isPosition),
+		)
+	)
+		return false;
+	const props = feature.properties;
+	if (!props || typeof props !== 'object' || Array.isArray(props)) return false;
+	const route = props as Record<string, unknown>;
+	const validLegs =
+		Array.isArray(route.legs) &&
+		route.legs.every((leg) => {
+			if (!leg || typeof leg !== 'object' || Array.isArray(leg)) return false;
+			const item = leg as Record<string, unknown>;
+			return (
+				typeof item.distance === 'number' &&
+				Number.isFinite(item.distance) &&
+				typeof item.time === 'number' &&
+				Number.isFinite(item.time) &&
+				Array.isArray(item.steps) &&
+				item.steps.every((step) => {
+					if (!step || typeof step !== 'object' || Array.isArray(step)) return false;
+					const s = step as Record<string, unknown>;
+					return (
+						Number.isInteger(s.from_index) &&
+						Number.isInteger(s.to_index) &&
+						typeof s.distance === 'number' &&
+						Number.isFinite(s.distance) &&
+						typeof s.time === 'number' &&
+						Number.isFinite(s.time)
+					);
+				})
+			);
+		});
+	return (
+		ROUTING_MODES.includes(String(route.mode)) &&
+		route.units === 'metric' &&
+		(route.distance_units === undefined || route.distance_units === 'meters') &&
+		typeof route.distance === 'number' &&
+		Number.isFinite(route.distance) &&
+		typeof route.time === 'number' &&
+		Number.isFinite(route.time) &&
+		validLegs &&
+		Array.isArray(route.waypoints) &&
+		route.waypoints.length > 0
+	);
+}
+
+function isValidRoutingCollectionProperties(value: unknown): boolean {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+	const properties = value as Record<string, unknown>;
+	return (
+		ROUTING_MODES.includes(String(properties.mode)) &&
+		properties.units === 'metric' &&
+		Array.isArray(properties.waypoints)
+	);
 }
 
 export async function oneRequest(
@@ -688,7 +863,7 @@ export async function oneRequest(
 const route = {
 	request: {
 		method: 'GET' as const,
-		url: "={{$parameter.resource === 'places' ? 'https://api.geoapify.com/v2/places' : $parameter.resource === 'placeDetails' ? 'https://api.geoapify.com/v2/place-details' : $parameter.operation === 'forward' ? 'https://api.geoapify.com/v1/geocode/search' : 'https://api.geoapify.com/v1/geocode/reverse'}}",
+		url: "={{$parameter.resource === 'routing' ? 'https://api.geoapify.com/v1/routing' : $parameter.resource === 'places' ? 'https://api.geoapify.com/v2/places' : $parameter.resource === 'placeDetails' ? 'https://api.geoapify.com/v2/place-details' : $parameter.operation === 'forward' ? 'https://api.geoapify.com/v1/geocode/search' : 'https://api.geoapify.com/v1/geocode/reverse'}}",
 		ignoreHttpStatusErrors: true,
 	},
 	send: { paginate: true },
@@ -706,6 +881,7 @@ const properties: INodeProperties[] = [
 			{ name: 'Geocoding', value: 'geocoding' },
 			{ name: 'Place', value: 'places' },
 			{ name: 'Place Detail', value: 'placeDetails' },
+			{ name: 'Routing', value: 'routing' },
 		],
 		default: 'geocoding',
 	},
@@ -757,6 +933,124 @@ const properties: INodeProperties[] = [
 			{ name: 'Get', value: 'get', action: 'Get details for a place identifier', routing: route },
 		],
 		default: 'get',
+	},
+	{
+		displayName: 'Operation',
+		name: 'operation',
+		type: 'options',
+		noDataExpression: true,
+		displayOptions: { show: { resource: ['routing'] } },
+		options: [
+			{
+				name: 'Calculate',
+				value: 'calculate',
+				action: 'Calculate a route through ordered waypoints',
+				routing: route,
+			},
+		],
+		default: 'calculate',
+	},
+	{
+		displayName: 'Waypoint Entry',
+		name: 'waypointMode',
+		type: 'options',
+		noDataExpression: true,
+		default: 'fields',
+		required: true,
+		displayOptions: { show: showRoute },
+		options: [
+			{ name: 'Latitude And Longitude Fields', value: 'fields' },
+			{ name: 'JSON Or Expression', value: 'json' },
+		],
+		description:
+			'Choose repeatable labeled fields or an ordered JSON array, including an array-valued expression',
+	},
+	{
+		displayName: 'Waypoints',
+		name: 'waypoints',
+		type: 'fixedCollection',
+		placeholder: 'Add Waypoint',
+		required: true,
+		default: { waypoint: [] },
+		typeOptions: { multipleValues: true },
+		displayOptions: { show: { ...showRoute, waypointMode: ['fields'] } },
+		options: [
+			{
+				displayName: 'Waypoint',
+				name: 'waypoint',
+				values: [
+					{
+						displayName: 'Latitude',
+						name: 'latitude',
+						type: 'number',
+						default: 0,
+						required: true,
+						typeOptions: { minValue: -90, maxValue: 90, numberPrecision: 7 },
+						description: 'Latitude in decimal degrees (-90 to 90)',
+					},
+					{
+						displayName: 'Longitude',
+						name: 'longitude',
+						type: 'number',
+						default: 0,
+						required: true,
+						typeOptions: { minValue: -180, maxValue: 180, numberPrecision: 7 },
+						description: 'Longitude in decimal degrees (-180 to 180)',
+					},
+				],
+			},
+		],
+		description: 'Add at least two waypoints in travel order. The API supports up to 1000.',
+	},
+	{
+		displayName: 'Waypoints JSON',
+		name: 'waypointsJson',
+		type: 'json',
+		default: '[]',
+		required: true,
+		displayOptions: { show: { ...showRoute, waypointMode: ['json'] } },
+		description:
+			'Ordered JSON array of {"latitude": number, "longitude": number} objects; accepts an array-valued expression',
+	},
+	{
+		displayName: 'Travel Mode',
+		name: 'mode',
+		type: 'options',
+		default: 'drive',
+		required: true,
+		displayOptions: { show: showRoute },
+		options: ROUTING_MODES.map((value) => ({
+			name: value
+				.replace(
+					/(^|_)([a-z])/g,
+					(_match, _separator, letter: string) => ` ${letter.toUpperCase()}`,
+				)
+				.trim(),
+			value,
+		})),
+		description: 'Geoapify routing travel profile',
+	},
+	{
+		displayName: 'Route Options',
+		name: 'routeOptions',
+		type: 'collection',
+		placeholder: 'Add Route Option',
+		default: {},
+		displayOptions: { show: showRoute },
+		options: [
+			{
+				displayName: 'Output',
+				name: 'outputFormat',
+				type: 'options',
+				default: 'features',
+				description:
+					'Geoapify returns distance in meters and travel time in seconds. One item per route retains each complete GeoJSON Feature.',
+				options: [
+					{ name: 'One Item per Route', value: 'features' },
+					{ name: 'Raw FeatureCollection', value: 'raw' },
+				],
+			},
+		],
 	},
 	{
 		displayName: 'Category Entry',

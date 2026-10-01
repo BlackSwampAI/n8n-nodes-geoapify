@@ -16,6 +16,9 @@
 			},
 			{
 				"url": "https://apidocs.geoapify.com/docs/place-details/"
+			},
+			{
+				"url": "https://apidocs.geoapify.com/docs/routing/"
 			}
 		]
 	}
