@@ -1,13 +1,16 @@
 {
-	"name": "n8n-nodes-community-template",
+	"name": "@blackswampai/n8n-nodes-geoapify",
 	"version": "0.1.0",
 	"packageManager": "npm@11.19.0",
-	"private": true,
-	"description": "Reusable starter package for verified n8n community nodes",
+	"description": "Geocoding community node for n8n using the Geoapify API.",
 	"license": "MIT",
-	"homepage": "https://github.com/christopherjnelson/n8n-community-node-template#readme",
+	"homepage": "https://blackswampai.com/n8n-nodes/geoapify/",
 	"keywords": [
-		"n8n-community-node-package"
+		"n8n-community-node-package",
+		"n8n",
+		"geoapify",
+		"geocoding",
+		"reverse-geocoding"
 	],
 	"author": {
 		"name": "Christopher J. Nelson",
@@ -15,7 +18,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/christopherjnelson/n8n-community-node-template.git"
+		"url": "https://github.com/BlackSwampAI/n8n-nodes-geoapify.git"
 	},
 	"scripts": {
 		"build": "n8n-node build",
@@ -44,11 +47,10 @@
 		"n8nNodesApiVersion": 1,
 		"strict": true,
 		"credentials": [
-			"dist/credentials/GithubIssuesApi.credentials.js",
-			"dist/credentials/GithubIssuesOAuth2Api.credentials.js"
+			"dist/credentials/GeoapifyApi.credentials.js"
 		],
 		"nodes": [
-			"dist/nodes/GithubIssues/GithubIssues.node.js"
+			"dist/nodes/Geoapify/Geoapify.node.js"
 		]
 	},
 	"devDependencies": {
@@ -71,5 +73,8 @@
 	},
 	"publishConfig": {
 		"access": "public"
+	},
+	"bugs": {
+		"url": "https://github.com/BlackSwampAI/n8n-nodes-geoapify/issues"
 	}
 }

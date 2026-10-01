@@ -4,7 +4,9 @@ Releases are user-authorized and publish only from `.github/workflows/publish.ym
 
 ## Finalize the generated repository
 
-Complete the README initialization checklist. `npm run release:check` enters template mode only when the normalized git origin is exactly this template repository. Every generated repository uses normal mode and must have final identity, no placeholders/examples, and no `private: true`.
+Finalize the generated repository's README with the exact package identity, truthful distribution status, credentials, implemented operations, output behavior, compatibility evidence, resources, changelog, and license. Do not retain template placeholders or installation steps for an unavailable package. `npm run release:check` enters template mode only when the normalized git origin is exactly this template repository. Every generated repository uses normal mode and must have final identity, no placeholders/examples, and no `private: true`.
+
+Package preparation and npm publication are separate. A generated package may be configured for future public distribution while still unpublished and unavailable: state that honestly in its README, omit npm installation instructions and verified-node claims until those states are real, and do not infer public availability from package metadata. Removing `private: true` completes package preparation only. It does not authorize publication, tagging, or changes to GitHub repository visibility. Publication requires explicit user authorization and the procedure below.
 
 ## Prepublication gate
 
@@ -24,7 +26,7 @@ npm run smoke:install
 git diff --check
 ```
 
-Inspect the dry-run tarball and install it in a disposable n8n instance. Verify node/credential loading, representative operations, error handling, and triggers where present. CI must pass on Node 22.22.0 and Node 24. The pinned official scanner preflight checks both its source patterns and built JavaScript; inline ESLint disables do not replace compliance.
+Inspect the dry-run tarball and install it in a disposable n8n instance. Verify node/credential loading, representative operations, error handling, and triggers where present. For editor-based packages, inspect actual field visibility, required controls, credential masking, operation switching, and expression entry in the disposable editor; compiled registration or metadata inspection is not UI evidence. CI must pass on Node 22.22.0 and Node 24. The pinned official scanner preflight checks both its source patterns and built JavaScript; inline ESLint disables do not replace compliance. Keep live-service evidence distinct from mocked execution and record when no live account/key was available.
 
 Every API credential should provide a harmless authenticated test request where the service supports one. Add a product-specific release invariant so the credential cannot remain registered but disconnected from every node.
 
