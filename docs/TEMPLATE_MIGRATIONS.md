@@ -4,6 +4,13 @@ GitHub creates a new repository from a snapshot of this template. Generated repo
 
 The current reusable baseline and canonical source repository are recorded in `.blackswamp/template.json`. Keep that file after generation so maintainers can compare their adopted version with future template releases. Updating the marker alone is not a migration: review the template diff, adopt each relevant script, workflow, test, or documentation change, run every local gate, and then update the marker in the generated repository.
 
+## Unversioned follow-up: Discord notification wording
+
+- The Discord release message now confirms npm publication and published-package verification succeeded, shows repository/tag as plain text, and includes one encoded GitHub tag/source URL. It no longer includes npm or workflow-run URLs.
+- This follow-up updates notification wording and its tests only. The separate published-scanner settling/retry change is not adopted here.
+
+Generated repositories do not receive this follow-up automatically. Copy the notification script and tests, update the matching release guidance, and run the relevant validation. Keep the existing `.blackswamp/template.json` marker unchanged for this unversioned follow-up.
+
 ## 2.2.0
 
 - Added an optional, read-only Discord notification job after successful npm publication and published-package verification. Configure `DISCORD_WEBHOOK` as a repository Actions secret to enable it; notification failures remain isolated from the immutable release.
