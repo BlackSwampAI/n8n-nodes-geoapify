@@ -4,12 +4,10 @@ import { pathToFileURL } from 'node:url';
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
-export function buildDiscordPayload({ packageName, version, repository, tag, runUrl }) {
-	const encodedPackage = packageName.split('/').map(encodeURIComponent).join('/');
-	const npmUrl = `https://www.npmjs.com/package/${encodedPackage}/v/${encodeURIComponent(version)}`;
+export function buildDiscordPayload({ packageName, version, repository, tag }) {
 	const tagUrl = `https://github.com/${repository}/tree/${encodeURIComponent(tag)}`;
 	return {
-		content: `Released **${packageName}@${version}** successfully.\n${npmUrl}\n${tagUrl}\n${runUrl}`,
+		content: `Released **${packageName}@${version}**: npm publication and published-package verification succeeded.\nRepository/tag: ${repository} @ ${tag}\n${tagUrl}`,
 		allowed_mentions: { parse: [] },
 	};
 }
@@ -26,7 +24,6 @@ export async function notifyDiscord({
 	version,
 	repository,
 	tag,
-	runUrl,
 	fetchImpl = fetch,
 }) {
 	if (!webhook) return { skipped: true };
@@ -35,7 +32,7 @@ export async function notifyDiscord({
 		response = await fetchImpl(webhookUrlWithWait(webhook), {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify(buildDiscordPayload({ packageName, version, repository, tag, runUrl })),
+			body: JSON.stringify(buildDiscordPayload({ packageName, version, repository, tag })),
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		});
 	} catch {
@@ -56,7 +53,6 @@ async function main() {
 			version: packageJson.version,
 			repository: process.env.GITHUB_REPOSITORY,
 			tag: process.env.GITHUB_REF_NAME,
-			runUrl: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
 		});
 		console.log(
 			result.skipped

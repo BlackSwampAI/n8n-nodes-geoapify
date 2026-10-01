@@ -10,16 +10,23 @@ const release = {
 	version: '1.2.3',
 	repository: 'owner/repository',
 	tag: 'v1.2.3',
-	runUrl: 'https://github.com/owner/repository/actions/runs/42',
 };
 
 describe('Discord release notification', () => {
-	it('builds links and prevents mentions', () => {
+	it('identifies the verified release with one source link and prevents mentions', () => {
 		expect(buildDiscordPayload(release)).toEqual({
 			content:
-				'Released **@example/n8n-nodes-demo@1.2.3** successfully.\nhttps://www.npmjs.com/package/%40example/n8n-nodes-demo/v/1.2.3\nhttps://github.com/owner/repository/tree/v1.2.3\nhttps://github.com/owner/repository/actions/runs/42',
+				'Released **@example/n8n-nodes-demo@1.2.3**: npm publication and published-package verification succeeded.\nRepository/tag: owner/repository @ v1.2.3\nhttps://github.com/owner/repository/tree/v1.2.3',
 			allowed_mentions: { parse: [] },
 		});
+	});
+
+	it('emits exactly one URL and encodes the tag in its source link', () => {
+		const payload = buildDiscordPayload({ ...release, tag: 'release/1.2.3' });
+		expect(payload.content.match(/https?:\/\/\S+/g)).toEqual([
+			'https://github.com/owner/repository/tree/release%2F1.2.3',
+		]);
+		expect(payload.content).toContain('Repository/tag: owner/repository @ release/1.2.3');
 	});
 
 	it('adds wait=true without dropping a Discord thread', () => {
