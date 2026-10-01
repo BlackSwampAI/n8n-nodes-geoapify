@@ -14,6 +14,11 @@ Notable user-facing changes are recorded here. This package is not yet published
 - Add category-based Places Search with circle, rectangle, and place-boundary filters, optional proximity ranking bias, source-backed category choices, and bounded pagination.
 - Add Place Details Get with complete FeatureCollection output that preserves identifiers, properties, related features, and supported geometry.
 
+## Unreleased — Batch 3: Routing
+
+- Add Routing Calculate for ordered latitude/longitude waypoints and Geoapify's documented travel modes.
+- Return the complete route feature by default or the raw FeatureCollection, preserving route geometry, properties, and legs.
+
 ## Planned roadmap
 
-The roadmap is recorded in [the Batch 1 handoff](docs/batch1-handoff.md). Batch 1 is merged; this change adds Batch 2. Each later batch is intended to start from freshly updated `main` after the preceding PR is merged.
+The roadmap is recorded in [the Batch 1 handoff](docs/batch1-handoff.md). Batches 1 and 2 are merged; this change adds Batch 3. Each later batch is intended to start from freshly updated `main` after the preceding PR is merged.

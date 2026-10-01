@@ -340,6 +340,7 @@ describe('Places and Place Details', () => {
 			'geocoding',
 			'places',
 			'placeDetails',
+			'routing',
 		]);
 		const ctx = context({ resource: 'placeDetails', operation: 'get', placeId: 'place_abc' });
 		const req = await validateGeoapifyRequest.call(ctx, { url: '', qs: {} });
