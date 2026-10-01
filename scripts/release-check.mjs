@@ -27,7 +27,9 @@ const sourceScanner = read('scripts/scan-source.mjs');
 const publishedScanner = read('scripts/scan-published.mjs');
 const publishWorkflow = read('.github/workflows/publish.yml');
 const ciWorkflow = read('.github/workflows/ci.yml');
-const brandingTemplate = read('docs/BRANDING_TEMPLATE.md');
+const brandingTemplate = read(
+	existsSync(resolve(root, 'docs/branding.md')) ? 'docs/branding.md' : 'docs/BRANDING_TEMPLATE.md',
+);
 let origin = '';
 try {
 	const dotGit = resolve(root, '.git');

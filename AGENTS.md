@@ -3,14 +3,14 @@
 ## Roles
 
 - The human user and primary Codex agent are co-orchestrators. The user controls the primary agent's model and reasoning settings and performs final pull-request review and merge.
-- Use exactly one implementation sub-agent named `builder`, configured in `.codex/agents/builder.toml` for `gpt-5.6-sol` with low reasoning effort.
+- Use an implementation sub-agent named `builder`, configured in `.codex/agents/builder.toml` for `gpt-6-luna` with Medium reasoning effort. Additional `gpt-6-luna` Medium agents may handle independent bounded implementation, testing, documentation, or investigation assignments.
 - The builder implements one bounded assignment at a time. The primary agent owns requirements, coordination, diff review, and user-facing reporting.
 
 ## Delegation contract
 
 - Do not spawn a builder for questions, status inspection, or planning discussion.
 - For concrete implementation work, give the builder the user's scope, constraints, acceptance criteria, and requested verification without broadening them.
-- Do not add more agents or recursively delegate unless the user explicitly changes this workflow.
+- Avoid concurrent edits to the same files; use sequential handoffs for dependent assignments. Do not recursively delegate unless the user explicitly authorizes it. Report a model-selection limitation rather than silently substituting another model.
 - Ask the user before choices that materially alter scope, dependencies, public APIs, release behavior, or external state.
 
 ## Repository safeguards

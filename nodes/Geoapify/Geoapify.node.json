@@ -1,0 +1,16 @@
+{
+	"node": "@blackswampai/n8n-nodes-geoapify.geoapify",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"categories": ["Data & Storage"],
+	"resources": {
+		"primaryDocumentation": [
+			{
+				"url": "https://apidocs.geoapify.com/docs/geocoding/forward-geocoding/"
+			},
+			{
+				"url": "https://apidocs.geoapify.com/docs/geocoding/reverse-geocoding/"
+			}
+		]
+	}
+}
