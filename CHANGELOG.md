@@ -2,6 +2,10 @@
 
 Notable user-facing changes are recorded here. This package is not yet published.
 
+## Unreleased — Template 2.2.0
+
+- Adopt the disposable local n8n port launcher and optional post-verification Discord release notification.
+
 ## Unreleased — Batch 1: Geocoding
 
 - Replace the GitHub Issues template example with the Geoapify API credential and Geoapify geocoding node.

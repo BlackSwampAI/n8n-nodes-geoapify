@@ -68,6 +68,10 @@ Invalid or blank required inputs are rejected before a request is sent. Requests
 - [Changelog](CHANGELOG.md)
 - [Black Swamp AI package page](https://blackswampai.com/n8n-nodes/geoapify/)
 
+## Developer setup
+
+Run `npm run dev` to start a disposable local n8n instance on port 5690, then open `http://localhost:5690` manually. The CLI browser shortcut still targets 5678; do not attach to, stop, or restart an existing service there. The launcher forwards CLI arguments and preserves the isolated n8n user folder. If port 5690 is occupied, report the conflict and choose an explicit alternative, for example `N8N_PORT=5692 npm exec -- n8n-node dev --custom-user-folder /tmp/n8n-node-run`. See [local testing notes](docs/testing.md).
+
 ## License
 
 [MIT](LICENSE.md)

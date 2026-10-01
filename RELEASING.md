@@ -44,4 +44,6 @@ Verify the workflow, npm version and `latest` tag, SLSA provenance attestation, 
 
 Submit only that exact published version to Creator Portal, then visually inspect and record its card version and logo. A valid npm tarball can still appear stale or generic in the portal.
 
+After both publication and published-package verification succeed, the dependent notification job posts the package/version, version-specific npm link, GitHub tag link, and workflow run link to Discord when the optional `DISCORD_WEBHOOK` repository secret exists. A missing secret skips cleanly. Notification failures are sanitized and isolated from the immutable release; the job has read-only repository permissions and makes one bounded request without retries or mentions.
+
 Before adopting this baseline in an older repository, inspect `.npmrc` and `engines.node`. Do not keep `engine-strict=true` when the declared engine excludes a required Node 22.22.0 or Node 24 CI lane. Create the migration branch from the current post-squash `main`; rebasing an old pre-squash feature branch can replay already-merged work.

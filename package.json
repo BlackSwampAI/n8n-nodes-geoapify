@@ -23,7 +23,7 @@
 	"scripts": {
 		"build": "n8n-node build",
 		"build:watch": "tsc --watch",
-		"dev": "n8n-node dev",
+		"dev": "node scripts/dev.mjs",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
 		"lint": "n8n-node lint",
