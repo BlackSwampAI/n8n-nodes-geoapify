@@ -7,6 +7,7 @@
 ## Evidence
 
 - [ ] Required operation controls and blank/default-state behavior are covered.
+- [ ] Source review passes, and each registered node or credential has one case-exact filename-matching constructor export.
 - [ ] Resource locators are tested with manual strings and list-mode objects where applicable.
 - [ ] External API claims distinguish generated contract, human documentation, and observed behavior.
 - [ ] Live fixtures, if any, are target-guarded, exact-owned, and assert cleanup.
@@ -14,6 +15,7 @@
 ## Validation
 
 - [ ] Format, lint, strict typecheck, and Vitest pass.
+- [ ] `npm run review:source` passes before build.
 - [ ] Build and official source/built scanner preflight pass.
 - [ ] Package boundary and compiled-registration load smoke pass.
 - [ ] User-visible behavior was inspected in disposable n8n where practical; limitations are stated.

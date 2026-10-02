@@ -60,6 +60,7 @@ npm run format:check
 npm run lint
 npm run typecheck
 npm test
+npm run review:source
 npm run build
 npm run scan:source
 npm run package:check
@@ -69,6 +70,10 @@ git diff --check
 ```
 
 CI retains Node 22.22.0 and Node 24 lanes with the repository's pinned npm 11.19.0. Node 22.22.0 local gates now pass in the nested CI-path workspace described above; GitHub CI results remain separate from local checks.
+
+`review:source` checks a narrow AST pattern: direct empty `INodeProperties[]`/`Array<INodeProperties>` exports accompanied by whole type imports. It does not detect aliases or inline type imports and is not a general quality check. The compiled smoke requires exactly one constructible export matching each registered filename; this catches accidental aliases, but does not establish runtime correctness. CI supports manual dispatch; publication remains tag-only and the publish workflow validates an annotated release tag before setup or install.
+
+Multipart transport cases apply only to operations that send multipart/form-data. This package's Geoapify operations use JSON/query serialization and expose no multipart request surface.
 
 ## Batch 1 historical disposable n8n editor and runtime checklist
 

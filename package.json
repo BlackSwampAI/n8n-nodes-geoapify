@@ -34,6 +34,7 @@
 		"typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
 		"test": "vitest run",
 		"test:unit": "vitest run",
+		"review:source": "node scripts/review-node-source.mjs",
 		"scan:source": "node scripts/scan-source.mjs",
 		"scan:published": "node scripts/scan-published.mjs",
 		"smoke:load": "node scripts/node-load-smoke.mjs",

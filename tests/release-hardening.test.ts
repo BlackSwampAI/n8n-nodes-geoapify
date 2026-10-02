@@ -1,10 +1,14 @@
 // Release-tool tests intentionally use Node built-ins and disposable local files.
 // eslint-disable-next-line @n8n/community-nodes/no-restricted-imports
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+// eslint-disable-next-line @n8n/community-nodes/no-restricted-imports
+import { execFileSync } from 'node:child_process';
 // eslint-disable-next-line @n8n/community-nodes/no-restricted-imports
 import { tmpdir } from 'node:os';
 // eslint-disable-next-line @n8n/community-nodes/no-restricted-imports
 import { join } from 'node:path';
+// eslint-disable-next-line @n8n/community-nodes/no-restricted-imports
+import { cwd, execPath } from 'node:process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { prepareNpmAuth } from '../scripts/prepare-npm-auth.mjs';
 import {
@@ -33,6 +37,136 @@ const temporaryDirectories: string[] = [];
 afterEach(() => {
 	for (const directory of temporaryDirectories.splice(0))
 		rmSync(directory, { recursive: true, force: true });
+});
+
+function releaseAuditFixture() {
+	const directory = mkdtempSync(join(tmpdir(), 'geoapify-release-audit-'));
+	temporaryDirectories.push(directory);
+	const repository = cwd();
+	cpSync(repository, directory, {
+		recursive: true,
+		filter: (source) =>
+			!source
+				.slice(repository.length)
+				.replace(/^\//, '')
+				.split('/')
+				.some((part) => ['.git', 'node_modules', 'dist', '.npm-cache'].includes(part)),
+	});
+	const worktreeGitDirectory = join(directory, '.git-worktrees', 'release-audit');
+	const commonGitDirectory = join(directory, '.git-common');
+	mkdirSync(worktreeGitDirectory, { recursive: true });
+	mkdirSync(commonGitDirectory, { recursive: true });
+	writeFileSync(join(directory, '.git'), 'gitdir: .git-worktrees/release-audit\n');
+	writeFileSync(join(worktreeGitDirectory, 'commondir'), '../../.git-common\n');
+	writeFileSync(
+		join(commonGitDirectory, 'config'),
+		'[remote "origin"]\n\turl = https://github.com/BlackSwampAI/n8n-nodes-geoapify.git\n',
+	);
+	return directory;
+}
+
+function runReleaseAudit(directory: string) {
+	try {
+		// eslint-disable-next-line @n8n/community-nodes/no-dangerous-functions -- fixed executable and disposable fixture
+		return execFileSync(execPath, ['scripts/release-check.mjs'], {
+			cwd: directory,
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
+	} catch (error) {
+		const output = error as { message?: string; stderr?: string };
+		// eslint-disable-next-line @n8n/community-nodes/require-node-api-error -- test helper reports subprocess diagnostics
+		throw new Error(output.stderr || output.message || String(error));
+	}
+}
+
+describe('release audit worktree and source-review safeguards', () => {
+	it('reads the origin from a linked worktree common directory and passes the package audit', () => {
+		const directory = releaseAuditFixture();
+		expect(runReleaseAudit(directory)).toContain(
+			'Release audit passed for @blackswampai/n8n-nodes-geoapify@0.1.0',
+		);
+	});
+
+	it('requires source review in CI and publication before build', () => {
+		const directory = releaseAuditFixture();
+		const workflowPath = join(directory, '.github/workflows/ci.yml');
+		const workflow = readFileSync(workflowPath, 'utf8');
+		writeFileSync(
+			workflowPath,
+			workflow
+				.replace('      - run: npm run review:source\n', '')
+				.replace(
+					'      - run: npm run build\n',
+					'      - run: npm run build\n      - run: npm run review:source\n',
+				),
+		);
+		expect(() => runReleaseAudit(directory)).toThrow(
+			'CI and publish must review source before build',
+		);
+	});
+
+	it('requires full history and an immediate immutable release-tag guard', () => {
+		const directory = releaseAuditFixture();
+		const workflowPath = join(directory, '.github/workflows/publish.yml');
+		const workflow = readFileSync(workflowPath, 'utf8').replace('fetch-depth: 0', 'fetch-depth: 1');
+		writeFileSync(workflowPath, workflow);
+		expect(() => runReleaseAudit(directory)).toThrow(
+			'publish must fetch full history and verify the release tag immediately after checkout',
+		);
+	});
+
+	it('rejects a release-tag guard that is not the next step after checkout', () => {
+		const directory = releaseAuditFixture();
+		const workflowPath = join(directory, '.github/workflows/publish.yml');
+		const workflow = readFileSync(workflowPath, 'utf8').replace(
+			'      - name: Verify immutable release tag\n',
+			'      - run: echo intervening step\n      - name: Verify immutable release tag\n',
+		);
+		writeFileSync(workflowPath, workflow);
+		expect(() => runReleaseAudit(directory)).toThrow(
+			'publish must fetch full history and verify the release tag immediately after checkout',
+		);
+	});
+
+	it('requires manual dispatch for CI without making publication manually dispatchable', () => {
+		const directory = releaseAuditFixture();
+		const ciPath = join(directory, '.github/workflows/ci.yml');
+		writeFileSync(ciPath, readFileSync(ciPath, 'utf8').replace('  workflow_dispatch:\n', ''));
+		expect(() => runReleaseAudit(directory)).toThrow('CI must support manual dispatch');
+	});
+
+	it('requires the tag guard script and source-review package command', () => {
+		const missingGuard = releaseAuditFixture();
+		rmSync(join(missingGuard, 'scripts/verify-release-tag.mjs'));
+		expect(() => runReleaseAudit(missingGuard)).toThrow(
+			'scripts/verify-release-tag.mjs is required',
+		);
+
+		const missingReviewCommand = releaseAuditFixture();
+		const packagePath = join(missingReviewCommand, 'package.json');
+		const packageJson = JSON.parse(readFileSync(packagePath, 'utf8')) as {
+			scripts: Record<string, string>;
+		};
+		delete packageJson.scripts['review:source'];
+		writeFileSync(packagePath, `${JSON.stringify(packageJson, null, '\t')}\n`);
+		expect(() => runReleaseAudit(missingReviewCommand)).toThrow(
+			'package.json script review:source is required',
+		);
+	});
+
+	it('requires the publish source-review gate before build', () => {
+		const directory = releaseAuditFixture();
+		const workflowPath = join(directory, '.github/workflows/publish.yml');
+		const workflow = readFileSync(workflowPath, 'utf8').replace(
+			'      - run: npm run review:source\n',
+			'',
+		);
+		writeFileSync(workflowPath, workflow);
+		expect(() => runReleaseAudit(directory)).toThrow(
+			'CI and publish must review source before build',
+		);
+	});
 });
 
 describe('npm authentication preparation', () => {
