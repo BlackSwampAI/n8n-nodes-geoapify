@@ -8,7 +8,7 @@ An independent n8n community node for Geoapify geocoding, Places search, Place D
 
 ## Installation
 
-As of 2026-09-30, `@blackswampai/n8n-nodes-geoapify` is unpublished and unavailable for installation. It is not available through verified-node discovery or npm installation. Do not attempt an npm install until an authorized publication has completed and the package is available.
+Self-hosted administrators can install `@blackswampai/n8n-nodes-geoapify` through **Settings → Community Nodes** after confirming that the requested version exists on npm. A version that is not yet available on npm cannot be installed. Follow n8n’s [community node GUI installation guide](https://docs.n8n.io/integrations/community-nodes/installation-and-management/gui-installation/) and enter the package name shown above. Availability and verified-node status depend on publication and n8n’s review process.
 
 ## Compatibility
 
