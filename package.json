@@ -2,7 +2,7 @@
 	"name": "@blackswampai/n8n-nodes-geoapify",
 	"version": "0.1.0",
 	"packageManager": "npm@11.19.0",
-	"description": "Geocoding community node for n8n using the Geoapify API.",
+	"description": "n8n community node for Geoapify forward and reverse geocoding, Places search, Place Details, and routing.",
 	"license": "MIT",
 	"homepage": "https://blackswampai.com/n8n-nodes/geoapify/",
 	"keywords": [
@@ -10,7 +10,10 @@
 		"n8n",
 		"geoapify",
 		"geocoding",
-		"reverse-geocoding"
+		"reverse-geocoding",
+		"places-search",
+		"place-details",
+		"routing"
 	],
 	"author": {
 		"name": "Christopher J. Nelson",
