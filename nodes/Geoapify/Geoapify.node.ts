@@ -237,11 +237,18 @@ export async function validateGeoapifyRequest(
 	if (typeof resultType !== 'string')
 		throw new NodeOperationError(this.getNode(), 'Result type must be text.');
 	if (resultType) {
-		const allowedTypes = ['street', 'postcode', 'city', 'state', 'country'];
+		const allowedTypes =
+			operation === 'forward'
+				? ['street', 'postcode', 'city', 'state', 'country', 'amenity']
+				: ['street', 'postcode', 'city', 'state', 'country'];
 		if (!allowedTypes.includes(resultType))
 			fail.call(
 				this,
-				'Choose a supported result type: street, postal code, city, state, or country.',
+				operation === 'reverse' && resultType === 'amenity'
+					? 'Choose a supported result type for Reverse Geocoding; Amenity / Place is available only for Forward Geocoding.'
+					: operation === 'forward'
+						? 'Choose a supported result type: street, postal code, city, state, country, or amenity/place.'
+						: 'Choose a supported result type: street, postal code, city, state, or country.',
 			);
 		qs.type = resultType;
 	}
@@ -1356,7 +1363,57 @@ const properties: INodeProperties[] = [
 		type: 'collection',
 		placeholder: 'Add Option',
 		default: {},
-		displayOptions: { show: { resource: ['geocoding'] } },
+		displayOptions: { show: showForward },
+		options: [
+			{
+				displayName: 'Language',
+				name: 'language',
+				type: 'string',
+				default: '',
+				description: 'Preferred result language as a two-letter ISO 639-1 code, such as en',
+			},
+			{
+				displayName: 'Output',
+				name: 'outputFormat',
+				type: 'options',
+				default: 'features',
+				options: [
+					{ name: 'One Item per Match', value: 'features' },
+					{ name: 'Raw FeatureCollection', value: 'raw' },
+				],
+			},
+			{
+				displayName: 'Max Results',
+				name: 'maxResults',
+				type: 'number',
+				default: 5,
+				typeOptions: { minValue: 1, maxValue: 100 },
+				description: 'Maximum number of matches to return, from 1 to 100',
+			},
+			{
+				displayName: 'Result Type',
+				name: 'resultType',
+				type: 'options',
+				default: '',
+				options: [
+					{ name: 'Amenity / Place', value: 'amenity' },
+					{ name: 'Any', value: '' },
+					{ name: 'City', value: 'city' },
+					{ name: 'Country', value: 'country' },
+					{ name: 'Postal Code', value: 'postcode' },
+					{ name: 'State', value: 'state' },
+					{ name: 'Street', value: 'street' },
+				],
+			},
+		],
+	},
+	{
+		displayName: 'Options',
+		name: 'options',
+		type: 'collection',
+		placeholder: 'Add Option',
+		default: {},
+		displayOptions: { show: showReverse },
 		options: [
 			{
 				displayName: 'Language',

@@ -12,6 +12,7 @@ The Vitest suite should exercise TypeScript node and credential contracts with r
 
 - Credential registration, password masking, `x-api-key` injection, credential test request, registered-node credential reference, and secret sanitization.
 - Forward free-form and structured requests, structured minimum validation, country restriction serialization, expressions, language/limit/type options, multi-result output, confidence fields, raw FeatureCollection, and successful empty results.
+- Forward free-form landmark text with explicit `type=amenity`; verify Any and omitted defaults send no `type`, reverse retains its original choices and locally rejects amenity, and other resources ignore stale geocoding options.
 - Structured address requires at least one of name, street, postcode, city, state, or country; house number alone must be rejected.
 - Reverse `lat`/`lon` query order, zero values, inclusive coordinate bounds, blank and invalid values, expression evaluation, and **Max Results** default 5 when omitted for both operations.
 - Malformed FeatureCollections, malformed features, authentication failure, quota/rate-limit and other service failures, Retry-After details, timeouts, and Continue On Fail behavior.
