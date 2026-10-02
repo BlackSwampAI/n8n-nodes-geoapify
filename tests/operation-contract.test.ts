@@ -5,6 +5,7 @@ import {
 	NodeOperationError,
 	type IExecutePaginationFunctions,
 	type IExecuteSingleFunctions,
+	type INodeProperties,
 	type INodePropertyOptions,
 } from 'n8n-workflow';
 import {
@@ -132,6 +133,205 @@ describe('Geoapify credential and declarative routing contract', () => {
 				})
 			).qs,
 		).toMatchObject({ street: 'Main St', housenumber: '4', city: 'Boston', limit: 5 });
+	});
+
+	it('sends amenity only when selected for forward geocoding and preserves Any and reverse defaults', async () => {
+		const description = new Geoapify().description;
+		const options = description.properties.filter((property) => property.name === 'options');
+		const forwardOptions = options.find((property) =>
+			property.displayOptions?.show?.operation?.includes('forward'),
+		)!;
+		const reverseOptions = options.find((property) =>
+			property.displayOptions?.show?.operation?.includes('reverse'),
+		)!;
+		const forwardType = (forwardOptions.options as INodeProperties[]).find(
+			(property) => property.name === 'resultType',
+		)!;
+		const reverseType = (reverseOptions.options as INodeProperties[]).find(
+			(property) => property.name === 'resultType',
+		)!;
+		expect(forwardType.options).toContainEqual({ name: 'Amenity / Place', value: 'amenity' });
+		expect((reverseType.options as INodePropertyOptions[]).map(({ value }) => value)).toEqual([
+			'',
+			'city',
+			'country',
+			'postcode',
+			'state',
+			'street',
+		]);
+		expect(forwardType.default).toBe('');
+		expect(reverseType.default).toBe('');
+		expect(
+			NodeHelpers.displayParameter(
+				{ resource: 'geocoding', operation: 'forward' } as never,
+				forwardOptions,
+				{ typeVersion: 1 },
+				description,
+			),
+		).toBe(true);
+		expect(
+			NodeHelpers.displayParameter(
+				{ resource: 'geocoding', operation: 'reverse' } as never,
+				forwardOptions,
+				{ typeVersion: 1 },
+				description,
+			),
+		).toBe(false);
+
+		const normalized = NodeHelpers.getNodeParameters(
+			description.properties,
+			{
+				resource: 'geocoding',
+				operation: 'forward',
+				addressMode: 'freeform',
+				address: 'Brandenburg Gate, Berlin, Germany',
+				options: { resultType: 'amenity' },
+			},
+			true,
+			false,
+			{ typeVersion: 1 },
+			description,
+		);
+		expect(normalized).toMatchObject({ options: { resultType: 'amenity' } });
+		const amenityRequest = await validateGeoapifyRequest.call(
+			context(normalized as Record<string, unknown>),
+			{
+				url: 'https://api.geoapify.com/v1/geocode/search',
+				qs: {},
+			},
+		);
+		expect(amenityRequest.qs).toMatchObject({
+			text: 'Brandenburg Gate, Berlin, Germany',
+			type: 'amenity',
+		});
+
+		const anyRequest = await validateGeoapifyRequest.call(
+			context({
+				operation: 'forward',
+				addressMode: 'freeform',
+				address: 'Brandenburg Gate, Berlin, Germany',
+				options: { resultType: '' },
+			}),
+			{ url: 'https://api.geoapify.com/v1/geocode/search', qs: {} },
+		);
+		expect(anyRequest.qs).not.toHaveProperty('type');
+		const reverseRequest = await validateGeoapifyRequest.call(
+			context({
+				operation: 'reverse',
+				latitude: 52.5163,
+				longitude: 13.3777,
+			}),
+			{ url: 'https://api.geoapify.com/v1/geocode/reverse', qs: {} },
+		);
+		expect(reverseRequest.qs).not.toHaveProperty('type');
+		const normalizedReverse = NodeHelpers.getNodeParameters(
+			description.properties,
+			{
+				resource: 'geocoding',
+				operation: 'reverse',
+				latitude: 52.5163,
+				longitude: 13.3777,
+				options: { resultType: 'postcode' },
+			},
+			true,
+			false,
+			{ typeVersion: 1 },
+			description,
+		);
+		expect(normalizedReverse).toMatchObject({ options: { resultType: 'postcode' } });
+		const normalizedReverseRequest = await validateGeoapifyRequest.call(
+			context(normalizedReverse as Record<string, unknown>),
+			{ url: 'https://api.geoapify.com/v1/geocode/reverse', qs: {} },
+		);
+		expect(normalizedReverseRequest.qs).toMatchObject({ type: 'postcode' });
+		await expect(
+			validateGeoapifyRequest.call(
+				context({
+					operation: 'reverse',
+					latitude: 52.5163,
+					longitude: 13.3777,
+					options: { resultType: 'amenity' },
+				}),
+				{ url: 'https://api.geoapify.com/v1/geocode/reverse', qs: {} },
+			),
+		).rejects.toThrow('supported result type');
+		let reverseTransportCalls = 0;
+		const staleAmenity = context(
+			{
+				operation: 'reverse',
+				latitude: 52.5163,
+				longitude: 13.3777,
+				options: { resultType: 'amenity' },
+			},
+			{
+				makeRoutingRequest: async () => {
+					reverseTransportCalls += 1;
+					return [];
+				},
+			},
+		);
+		await expect(
+			oneRequest.call(staleAmenity as unknown as IExecutePaginationFunctions, {
+				options: { url: 'https://api.geoapify.com/v1/geocode/reverse', qs: {} },
+				preSend: [],
+				postReceive: [],
+			}),
+		).rejects.toThrow('Amenity / Place is available only for Forward Geocoding');
+		expect(reverseTransportCalls).toBe(0);
+
+		const structuredName = await validateGeoapifyRequest.call(
+			context({
+				operation: 'forward',
+				addressMode: 'structured',
+				name: 'Brandenburg Gate',
+				options: { resultType: 'amenity' },
+			}),
+			{ url: 'https://api.geoapify.com/v1/geocode/search', qs: {} },
+		);
+		expect(structuredName.qs).toMatchObject({ name: 'Brandenburg Gate', type: 'amenity' });
+		expect(structuredName.qs).not.toHaveProperty('text');
+
+		const places = await validateGeoapifyRequest.call(
+			context({
+				resource: 'places',
+				operation: 'search',
+				categoryMode: 'catalog',
+				categories: ['commercial.supermarket'],
+				filterType: 'circle',
+				filterLatitude: 0,
+				filterLongitude: 0,
+				filterRadius: 100,
+				searchOptions: { pageSize: 5, maxResults: 5, maxRequests: 1, startOffset: 0 },
+				options: { resultType: 'amenity' },
+			}),
+			{ url: 'https://api.geoapify.com/v2/places', qs: {} },
+		);
+		expect(places.qs).not.toHaveProperty('type');
+		const details = await validateGeoapifyRequest.call(
+			context({
+				resource: 'placeDetails',
+				operation: 'get',
+				placeId: 'abc',
+				options: { resultType: 'amenity' },
+			}),
+			{ url: 'https://api.geoapify.com/v2/place-details', qs: {} },
+		);
+		expect(details.qs).toEqual({ id: 'abc' });
+		const route = await validateGeoapifyRequest.call(
+			context({
+				resource: 'routing',
+				operation: 'calculate',
+				waypoints: {
+					waypoint: [
+						{ latitude: 1, longitude: 2 },
+						{ latitude: 3, longitude: 4 },
+					],
+				},
+				options: { resultType: 'amenity' },
+			}),
+			{ url: 'https://api.geoapify.com/v1/routing', qs: {} },
+		);
+		expect(route.qs).not.toHaveProperty('type');
 	});
 
 	it('rejects blank, mistyped, incomplete and malformed parameters before transport', async () => {
@@ -461,7 +661,7 @@ describe('Geoapify credential and declarative routing contract', () => {
 });
 
 describe('n8n parameter normalization', () => {
-	it('resolves the actual resource, operation, collection, and structured field shapes for both routes', () => {
+	it('resolves the actual resource, operation, collection, and structured field shapes for both routes', async () => {
 		const description = new Geoapify().description;
 		const forward = NodeHelpers.getNodeParameters(
 			description.properties,
@@ -501,6 +701,20 @@ describe('n8n parameter normalization', () => {
 			description,
 		);
 		expect(reverse).toMatchObject({ latitude: 0, longitude: 0, options: { outputFormat: 'raw' } });
+		const defaultForward = NodeHelpers.getNodeParameters(
+			description.properties,
+			{ resource: 'geocoding', operation: 'forward', addressMode: 'freeform', address: 'Boston' },
+			true,
+			false,
+			{ typeVersion: 1 },
+			description,
+		);
+		expect(defaultForward).toMatchObject({ options: {} });
+		const defaultRequest = await validateGeoapifyRequest.call(
+			context(defaultForward as Record<string, unknown>),
+			{ url: 'https://api.geoapify.com/v1/geocode/search', qs: {} },
+		);
+		expect(defaultRequest.qs).not.toHaveProperty('type');
 	});
 });
 

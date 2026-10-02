@@ -50,3 +50,9 @@ No disposable n8n UI session, live Geoapify/API request, or published-package sc
 After PR #6 merged, PR #7 conflicted with main's release-readiness changelog. Merging `origin/main` at `d96eb867c18b5bf05a38903288e7031e7f646a50` preserved the `0.1.0` release notes and product metadata, README, release-readiness document, and testing evidence. The template guard summary remains a separate unreleased entry. No release behavior or runtime operation was changed by this resolution.
 
 Format, lint, strict typecheck, 152 tests across 12 files, source review, build, official source/built scans, release audit/package boundary, and compiled-load smoke passed on the merged tree. The primary also passed isolated packed-install/load smoke. Updated GitHub CI results are recorded separately in the PR.
+
+## Latest-main integration follow-up (2026-10-02)
+
+After the forward Amenity / Place result-type fix merged to main, PR #7 was merged locally with `origin/main` at `be0ba13f74a45cfa28da7dc72affe6c3f3df1b2c`. The only conflict was `CHANGELOG.md`; resolution retains separate Unreleased entries for the forward Amenity result type and template release guards above the existing 0.1.0 notes. The incoming node, operation-contract, API-matrix, and Amenity handoff changes are preserved as main history without further edits. The existing testing guide retains its forward-Amenity regression case and prior package evidence.
+
+On the merged tree, `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (153 tests across 12 files), `npm run review:source`, `npm run build`, `npm run scan:source`, `npm run package:check` (15 files), `npm run smoke:load` (1 node and 1 wired credential), and `git diff --check` passed. The root orchestrator also passed `npm run smoke:install`, loading 1 node and 1 wired credential in an isolated consumer. These local checks make no claim about live Geoapify requests.

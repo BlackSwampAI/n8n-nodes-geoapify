@@ -2,6 +2,10 @@
 
 Notable user-facing changes are recorded here.
 
+## Unreleased — Forward amenity result type
+
+- Add a forward-only Amenity / Place result type for explicitly filtering free-form place searches; Any continues to omit the type parameter.
+
 ## Unreleased — Template release guards
 
 - Add fail-closed annotated release-tag validation before publish setup, narrow source-review gates before build, strict registered-constructor smoke checks, and bounded published-scan propagation retries. CI supports manual dispatch; publishing remains tag-only.
