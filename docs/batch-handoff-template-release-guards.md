@@ -44,3 +44,9 @@ No release tag was created, no registry publication occurred, and npm trust conf
 - Root completed final diff review, packed-install smoke, and supplemental Node 22.23.2 Vitest verification. Exact Node 22.22.0 CI remains outstanding.
 
 No disposable n8n UI session, live Geoapify/API request, or published-package scanner invocation was performed as part of this migration.
+
+## Merge-conflict follow-up (2026-10-02)
+
+After PR #6 merged, PR #7 conflicted with main's release-readiness changelog. Merging `origin/main` at `d96eb867c18b5bf05a38903288e7031e7f646a50` preserved the `0.1.0` release notes and product metadata, README, release-readiness document, and testing evidence. The template guard summary remains a separate unreleased entry. No release behavior or runtime operation was changed by this resolution.
+
+Format, lint, strict typecheck, 152 tests across 12 files, source review, build, official source/built scans, release audit/package boundary, and compiled-load smoke passed on the merged tree. The primary also passed isolated packed-install/load smoke. Updated GitHub CI results are recorded separately in the PR.

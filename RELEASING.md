@@ -1,5 +1,7 @@
 # Releasing an n8n community node
 
+For the current package-specific gates, owner actions, and deferred live smoke, see [release readiness for 0.1.0](docs/release-readiness-0.1.0.md).
+
 Releases are user-authorized and publish only from `.github/workflows/publish.yml`. Never run `npm publish` locally for an n8n release.
 
 ## Finalize the generated repository
