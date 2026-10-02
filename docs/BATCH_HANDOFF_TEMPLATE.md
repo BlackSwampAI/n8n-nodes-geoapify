@@ -15,7 +15,9 @@ Use this checklist for each bounded implementation batch. Replace bracketed prom
 
 - Compare generated API contracts, current human documentation, and pinned live behavior when an external API is involved.
 - Test real n8n parameter shapes, including expression values and resource-locator list objects.
+- For multipart/form-data integrations, test exact field names, repeated-field order, binary metadata, empty optional values, and server-observed body semantics; explicitly state when the operation surface has no multipart requests.
 - Ensure required controls are visible and marked required for every advertised operation.
+- Confirm each registered filename has one case-exact matching constructible export and no redundant constructor alias. Run the source review; remove empty property-only placeholders only after checking the assembled node retains its expected operations and shared controls.
 - For ordinary REST APIs, prove declarative request construction, pagination, hooks, response normalization, and item-per-input behavior as applicable.
 - For a programmatic exception, prove the documented exceptional behavior plus input immutability, paired items, request-helper use, and `continueOnFail` handling as applicable.
 - Prove invalid blank/default state fails locally before transport when it cannot form a valid request.

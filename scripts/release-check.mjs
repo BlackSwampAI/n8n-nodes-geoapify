@@ -35,8 +35,17 @@ try {
 	const dotGit = resolve(root, '.git');
 	const gitDirectory = statSync(dotGit).isDirectory()
 		? dotGit
-		: resolve(root, readFileSync(dotGit, 'utf8').slice('gitdir:'.length).trim());
-	const gitConfig = readFileSync(resolve(gitDirectory, 'config'), 'utf8');
+		: resolve(
+				root,
+				readFileSync(dotGit, 'utf8')
+					.replace(/^gitdir:\s*/, '')
+					.trim(),
+			);
+	const commonDirectoryFile = resolve(gitDirectory, 'commondir');
+	const commonDirectory = existsSync(commonDirectoryFile)
+		? resolve(gitDirectory, readFileSync(commonDirectoryFile, 'utf8').trim())
+		: gitDirectory;
+	const gitConfig = readFileSync(resolve(commonDirectory, 'config'), 'utf8');
 	const originSection = gitConfig.match(/\[remote "origin"\]([\s\S]*?)(?=\n\[|$)/)?.[1] ?? '';
 	origin = normalizeGitHubUrl(originSection.match(/^\s*url\s*=\s*(.+)$/m)?.[1]);
 	if (!origin) throw new Error('origin URL is missing');
@@ -70,6 +79,7 @@ for (const script of [
 	'typecheck',
 	'test',
 	'test:unit',
+	'review:source',
 	'build',
 	'release:check',
 	'package:check',
@@ -137,6 +147,22 @@ if (!/timeout-minutes:\s*30/.test(publishWorkflow))
 	fail('publish must have a 30-minute job timeout');
 const [publishJob, verifyPublishedJob = ''] = publishWorkflow.split(/\n {2}verify-published:\s*\n/);
 const publishWorkflowPreamble = publishJob.slice(0, publishJob.indexOf('\njobs:'));
+const checkout = publishJob.indexOf('actions/checkout@v6');
+const fullHistory = publishJob.indexOf('fetch-depth: 0');
+const releaseTagGuard = publishJob.indexOf('node scripts/verify-release-tag.mjs');
+if (
+	checkout < 0 ||
+	fullHistory <= checkout ||
+	releaseTagGuard <= fullHistory ||
+	!/actions\/checkout@v6\n\s+with:\n\s+fetch-depth: 0\n\s+- name: Verify immutable release tag\n\s+run: node scripts\/verify-release-tag\.mjs/.test(
+		publishJob,
+	) ||
+	releaseTagGuard >= publishJob.indexOf('actions/setup-node@v6') ||
+	releaseTagGuard >= publishJob.indexOf('npm ci') ||
+	releaseTagGuard >= publishJob.indexOf('node scripts/prepare-npm-auth.mjs') ||
+	releaseTagGuard >= publishJob.indexOf('npm run release')
+)
+	fail('publish must fetch full history and verify the release tag immediately after checkout');
 if (/id-token:\s*write/.test(publishWorkflowPreamble))
 	fail('id-token: write must be scoped to the publish job, not the workflow');
 if (!/id-token:\s*write/.test(publishJob) || !/contents:\s*read/.test(publishJob))
@@ -173,6 +199,8 @@ if (packageJson.scripts?.dev !== 'node scripts/dev.mjs')
 	fail('dev must launch the port-pinned wrapper');
 for (const path of [
 	'scripts/prepare-npm-auth.mjs',
+	'scripts/verify-release-tag.mjs',
+	'scripts/review-node-source.mjs',
 	'scripts/verify-npm-version.mjs',
 	'scripts/scan-source.mjs',
 	'scripts/scan-published.mjs',
@@ -208,6 +236,15 @@ for (const gate of ['format:check', 'lint', 'typecheck', 'test', 'build', 'packa
 		fail(`CI must run npm run ${gate}`);
 	}
 }
+if (!ciWorkflow.includes('workflow_dispatch:')) fail('CI must support manual dispatch');
+if (
+	!packageJson.scripts?.['review:source']?.includes('scripts/review-node-source.mjs') ||
+	!ciWorkflow.includes('npm run review:source') ||
+	!publishJob.includes('npm run review:source') ||
+	ciWorkflow.indexOf('npm run review:source') >= ciWorkflow.indexOf('npm run build') ||
+	publishJob.indexOf('npm run review:source') >= publishJob.indexOf('npm run build')
+)
+	fail('CI and publish must review source before build');
 for (const [label, workflow] of [
 	['CI', ciWorkflow],
 	['publish', publishWorkflow],

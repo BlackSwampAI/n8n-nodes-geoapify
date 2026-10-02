@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, parse, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
@@ -20,17 +20,47 @@ export function assertRegisteredCredentialsAreWired(nodes, credentials) {
 		);
 }
 
-function loadRegistration(packageRoot, registration, kind) {
-	const moduleExports = require(resolve(packageRoot, registration));
-	const constructors = Object.values(moduleExports).filter(
-		(value) => typeof value === 'function' && value.prototype,
-	);
-	for (const Constructor of constructors) {
-		const instance = new Constructor();
-		if (kind === 'node' && instance.description?.name) return instance;
-		if (kind === 'credential' && instance.name) return instance;
+function isConstructible(value) {
+	if (typeof value !== 'function' || !value.prototype) return false;
+	try {
+		Reflect.construct(String, [], value);
+		return true;
+	} catch {
+		return false;
 	}
-	throw new Error(`No loadable ${kind} export found in ${registration}`);
+}
+
+export function loadRegistration(packageRoot, registration, kind) {
+	const moduleExports = require(resolve(packageRoot, registration));
+	const expectedName = parse(registration).name.split('.')[0];
+	const constructibleExports = Object.entries(moduleExports).filter(([, value]) =>
+		isConstructible(value),
+	);
+	if (
+		!Object.hasOwn(moduleExports, expectedName) ||
+		!isConstructible(moduleExports[expectedName])
+	) {
+		const available = constructibleExports.map(([name]) => name).join(', ') || 'none';
+		throw new Error(
+			`Registered ${kind} ${registration} must export constructible ${expectedName}; constructible exports: ${available}`,
+		);
+	}
+	const extraConstructors = constructibleExports
+		.map(([name]) => name)
+		.filter((name) => name !== expectedName);
+	if (extraConstructors.length > 0)
+		throw new Error(
+			`Registered ${kind} ${registration} has redundant or unrelated constructible exports: ${extraConstructors.join(', ')}; export only ${expectedName}`,
+		);
+
+	const instance = new moduleExports[expectedName]();
+	if (kind === 'node' && !instance.description?.name)
+		throw new Error(`Registered node ${registration} export ${expectedName} is not a usable node`);
+	if (kind === 'credential' && !instance.name)
+		throw new Error(
+			`Registered credential ${registration} export ${expectedName} is not a usable credential`,
+		);
+	return instance;
 }
 
 export function assertRegistrationIcons(packageRoot, registration, icon, owner) {

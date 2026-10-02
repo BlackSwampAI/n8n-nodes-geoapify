@@ -6,6 +6,10 @@ Notable user-facing changes are recorded here. This package is not yet published
 
 - Adopt the disposable local n8n port launcher and optional post-verification Discord release notification.
 
+## Unreleased — Template release guards
+
+- Add fail-closed annotated release-tag validation before publish setup, narrow source-review gates before build, strict registered-constructor smoke checks, and bounded published-scan propagation retries. CI now supports manual dispatch; publishing remains tag-only.
+
 ## Unreleased — Batch 1: Geocoding
 
 - Replace the GitHub Issues template example with the Geoapify API credential and Geoapify geocoding node.

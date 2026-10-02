@@ -11,6 +11,15 @@ The current reusable baseline and canonical source repository are recorded in `.
 
 Generated repositories do not receive this follow-up automatically. Copy the notification script and tests, update the matching release guidance, and run the relevant validation. Keep the existing `.blackswamp/template.json` marker unchanged for this unversioned follow-up.
 
+## Unversioned follow-up: release and source guards (2026-10-02)
+
+- Adopted from the [pinned template commit](https://github.com/christopherjnelson/n8n-community-node-template/commit/596e784cfe69cd8894529b8a81c491921cde9773): an annotated-tag guard before setup/install/auth/publication, a source-review gate before build, exact registration-constructor checks, CI manual dispatch, bounded published-scanner settling, and read-only recovery guidance.
+- The scanner waits 60 seconds before its first attempt and retries at most 10 times at 30-second intervals only for recognized propagation failures (360 seconds total wait, excluding scanner runtime). Success requires exit status zero, no spawn error, and the exact success marker.
+- Manual dispatch applies to CI after the workflow reaches the default branch; publishing remains tag-only. The tag guard cannot prove human review, successful CI, or historical tag immutability. Keep human review and CI as release requirements and never move, delete, or replay tags.
+- The source reviewer detects only its documented narrow AST shape; constructor matching is package hygiene, not runtime correctness. Recovery guidance cannot restore GitHub Actions state, permissions, secrets, npm trust configuration, or registry state; operators must inspect those external systems and current npm policy before acting.
+
+Generated repositories adopting this follow-up should compare against the pinned template commit above, copy the scripts/workflow gates/tests/guidance, run the full local and CI checks, and preserve the existing template marker until a separately reviewed versioned migration.
+
 ## 2.2.0
 
 - Added an optional, read-only Discord notification job after successful npm publication and published-package verification. Configure `DISCORD_WEBHOOK` as a repository Actions secret to enable it; notification failures remain isolated from the immutable release.
